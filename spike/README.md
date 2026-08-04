@@ -36,8 +36,42 @@ Two conclusions from the shape of these numbers, not just their size:
   and the sibling project measured host-side processing at 14.3 ms. Over Wi-Fi that
   headroom was irrelevant; over USB it is the thing to watch in v0.1.
 
-Still outstanding from the v0.0 checklist: driving focus one step and confirming the
-frame changes. Run with `--focus-test` to close it.
+### Focus stepping — works, with a caveat that matters for v0.2
+
+`DriveLensEvf` drives the lens correctly on an R7 with an `RF85mm F2 MACRO IS STM`.
+Verified by image, not by return code:
+
+| | sharpness | diff vs start |
+|---|---|---|
+| start | 157 | — (noise floor 2.51) |
+| after 15 × `near3` | **3320** | 21.77 |
+| after 15 × `far3` | 156 | back to start |
+
+**The caveat: a single step is invisible.** Even `near3`, the coarsest of the three
+sizes, moves this lens by less than the frame's sensor noise — roughly 0.75 mean
+absolute difference against a ~2.4 floor. A one-step test reports "nothing happened"
+no matter how carefully it measures, and the lens focuses internally so nothing moves
+visibly either. Both signals say "broken" while the SDK is working correctly.
+
+Two consequences:
+
+- **v0.2 focus stepping must accumulate steps per keypress**, not send one. A UI that
+  sends a single step per press will feel completely dead on a lens like this.
+- **Never trust `EDS_ERR_OK` as proof an action happened.** It means the command was
+  accepted. Confirming the effect needs a measurement, and the measurement needs a
+  noise floor to compare against.
+
+### Two findings for later milestones
+
+**No camera-side live-view magnification.** `Evf_Zoom` reports `NOT_SUPPORTED` on the
+R7, and `EdsGetPropertyDesc` returns `access=0, count=0`. This settles the open
+question in ROADMAP §8 v0.2: EDSDK offers no magnification gain over CCAPI here, so
+the software loupe stays the only option. Capability detection should hide the control.
+
+**Tenengrad is a good sharpness metric on this hardware.** It separated sharp from soft
+by **21×** (157 → 3320) on real frames. The sibling project measured variance of the
+Laplacian at only 1.22× and its replacement at 5.66× on real data, so this is worth
+carrying into the v0.2 sharpness readout.
 
 ---
 

@@ -106,6 +106,21 @@ COINIT_APARTMENTTHREADED = 0x2
 PM_REMOVE = 0x0001
 
 
+class EdsPropertyDesc(ctypes.Structure):
+    """Settable values for a property, plus its access level.
+
+    numElements is 0 when a property cannot currently be set, which is how the
+    camera tells us a capability is unavailable right now rather than absent.
+    """
+
+    _fields_ = [
+        ("form", ctypes.c_int32),
+        ("access", ctypes.c_int32),
+        ("numElements", ctypes.c_int32),
+        ("propDesc", ctypes.c_int32 * 128),
+    ]
+
+
 class EdsError(RuntimeError):
     """An EDSDK call returned something other than EDS_ERR_OK."""
 
@@ -179,6 +194,9 @@ def load_edsdk(dll_dir: Path) -> ctypes.WinDLL:
     dll.EdsSendCommand.argtypes = [ref, c_uint32, ctypes.c_int32]
     dll.EdsSendCommand.restype = err
 
+    dll.EdsGetPropertyDesc.argtypes = [ref, c_uint32, POINTER(EdsPropertyDesc)]
+    dll.EdsGetPropertyDesc.restype = err
+
     dll.EdsCreateMemoryStream.argtypes = [c_uint64, POINTER(ref)]
     dll.EdsCreateMemoryStream.restype = err
 
@@ -224,13 +242,20 @@ class Spike:
     """Runs the whole v0.0 measurement on one STA thread."""
 
     def __init__(
-        self, dll_dir: Path, seconds: float, warmup: int, focus_test: bool, focus_step: int = 1
+        self,
+        dll_dir: Path,
+        seconds: float,
+        warmup: int,
+        focus_test: bool,
+        focus_step: int = 1,
+        focus_count: int = 10,
     ) -> None:
         self.dll_dir = dll_dir
         self.seconds = seconds
         self.warmup = warmup
         self.focus_test = focus_test
         self.focus_step = focus_step
+        self.focus_count = focus_count
         self.result: dict | None = None
         self.error: BaseException | None = None
 
@@ -468,10 +493,20 @@ class Spike:
         out["sharpness_before"] = sharpness(base)
 
         step = self.focus_step
-        print(f"  focus test: driving one step near, then one step far (size {step}) ...")
+        count = self.focus_count
+        # One step is not enough to prove anything. On an RF 85mm macro even the
+        # coarsest single step moves focus by less than the frame noise, so a
+        # one-step test reports a false negative however carefully it measures.
+        print(f"  focus test: driving {count} steps near, then {count} far (size {step}) ...")
         for label, value in ((f"near{step}", _DRIVE_NEAR[step]), (f"far{step}", _DRIVE_FAR[step])):
-            code = dll.EdsSendCommand(camera, kEdsCameraCommand_DriveLensEvf, value)
-            out[f"{label}_code"] = _ERROR_NAMES.get(code, f"0x{code:08X}")
+            codes = set()
+            for _ in range(count):
+                codes.add(dll.EdsSendCommand(camera, kEdsCameraCommand_DriveLensEvf, value))
+                time.sleep(0.12)
+                pump_messages()
+            out[f"{label}_code"] = ", ".join(
+                sorted(_ERROR_NAMES.get(c, f"0x{c:08X}") for c in codes)
+            )
             settle()
             after = sample()
             if after is None:
@@ -480,7 +515,7 @@ class Spike:
             out[f"{label}_diff"] = difference(base, after)
             out[f"{label}_sharpness"] = sharpness(after)
             # Comfortably clear of the floor, not merely above it.
-            out[f"{label}_moved"] = out[f"{label}_diff"] > max(floor * 3.0, 1.0)
+            out[f"{label}_moved"] = out[f"{label}_diff"] > max(floor * 3.0, 2.0)
             base = after
 
         return out
@@ -621,6 +656,12 @@ def main(argv: list[str] | None = None) -> int:
         default=1,
         help="Focus step size: 1 finest, 3 coarsest. Use 3 to test whether it moves at all.",
     )
+    parser.add_argument(
+        "--focus-count",
+        type=int,
+        default=10,
+        help="Steps driven in each direction. One step is below the noise floor.",
+    )
     args = parser.parse_args(argv)
 
     if sys.platform != "win32":
@@ -636,7 +677,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  dll dir : {dll_dir}")
     print("  this will NOT fire the shutter\n")
 
-    spike = Spike(dll_dir, args.seconds, args.warmup, args.focus_test, args.focus_step)
+    spike = Spike(dll_dir, args.seconds, args.warmup, args.focus_test, args.focus_step, args.focus_count)
 
     # The SDK is initialised, used and torn down entirely on this one thread.
     thread = threading.Thread(target=spike.run, name="camera", daemon=True)
