@@ -129,7 +129,7 @@ were calibrated on one scene.
 - The **Now** number peaks as you pass best focus and falls either side. Walk
   focus back and forth and find the peak by the number alone.
 - **Best** sticks at the highest value seen. **Reset best** clears it.
-- Response feels prompt: ~0.15 s for fine/medium, ~0.5 s for coarse.
+- Response feels prompt: ~20 ms fine, ~140 ms medium, ~380 ms coarse.
 
 ❌ **Report if:**
 - **Fine steps still feel too coarse.** If so, the SDK's own minimum is the
@@ -170,14 +170,17 @@ This is new and the most likely to need tuning on real film.
 
 ### 6a. Compare methods
 
-Under **Preview**, the **Method** control has three settings. Switch between
-them on the same frame:
+Under **Preview**, switch **Method** between its two settings on the same frame.
+Untick **Invert to positive** to see the negative itself.
 
-| Method | What to expect |
+| Setting | What to expect |
 |---|---|
-| **Off** | The negative as the camera sees it — orange, inverted tones |
+| Invert unticked | The negative as the camera sees it — orange, inverted tones |
 | **Linear** | The old v0.1 flip. On **colour** film this should look clearly **cyan** |
 | **Film** | The real pipeline: neutral, properly exposed positive |
+
+Exposure, contrast and the base sampler only feed **Film**, so they grey out
+with a note when Linear or Invert-off is selected.
 
 ✅ **The headline check:** on a **colour negative**, Linear should look obviously
 cyan and Film should not. On synthetic fixtures the colour cast dropped ~48×.
