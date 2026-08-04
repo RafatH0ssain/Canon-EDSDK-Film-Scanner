@@ -1,0 +1,27 @@
+# Canon EDSDK Film Scanner -- runtime + dev dependencies
+#
+# Deliberately small and mainstream. If you are adding a dependency, ask
+# whether a newcomer on Windows can `pip install` it without a compiler.
+#
+# Note what is NOT here: EDSDK itself. Canon licenses it per developer and it
+# cannot be redistributed, so you obtain your own copy and point config.yaml
+# at it. The SDK is reached through ctypes, which is in the standard library.
+#
+# Use Python 3.10-3.13. On 3.14 pip currently tries to build opencv-python
+# from source, which fails messily on Windows.
+
+# --- Config -----------------------------------------------------------------
+PyYAML>=6.0,<7             # config.yaml
+
+# --- Image processing -------------------------------------------------------
+numpy>=1.26,<3
+opencv-python>=4.10,<5     # cv2: JPEG decode/encode, inversion, peaking
+
+# --- Local web UI -----------------------------------------------------------
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.9    # form handling for the UI's control posts
+
+# --- Tests ------------------------------------------------------------------
+pytest>=8.0,<9
+httpx>=0.27,<1             # required by fastapi.testclient

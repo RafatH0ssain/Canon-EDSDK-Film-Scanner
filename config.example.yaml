@@ -1,0 +1,71 @@
+# Canon EDSDK Film Scanner -- example configuration
+#
+# Copy this file to `config.yaml` and edit it:
+#
+#     copy config.example.yaml config.yaml      (Windows)
+#     cp config.example.yaml config.yaml        (macOS/Linux)
+#
+# `config.yaml` is git-ignored because it contains a path into your own copy
+# of Canon's EDSDK. Never commit it.
+#
+# Every value below can also be overridden by an environment variable named
+# CEFS_<SECTION>_<KEY>, uppercased -- e.g. CEFS_EDSDK_LIBRARY_DIR. Environment
+# variables win over the file. Useful for CI and for temporary experiments.
+
+edsdk:
+  # Directory containing the 64-bit EDSDK shared library you downloaded from
+  # Canon's Developer Community. This repository does not and cannot ship it.
+  #
+  # Use the 64-bit library with 64-bit Python. Mixing bitness fails at load
+  # time with an error that does not mention bitness at all, so check this
+  # first if loading fails.
+  #
+  # Keep the SDK outside the repository, or in ./edsdk_sdk/ which is ignored.
+  library_dir: "C:/EDSDK/Dll"
+
+  # Optional: full path to the library file, if it is not the expected default
+  # name inside library_dir. Leave empty to let the loader find it.
+  library_path: ""
+
+liveview:
+  # Live view is the entire reason this project exists. These are starting
+  # points for the v0.0 measurement, not tuned values.
+  #
+  # Target frames per second for the frame pump. The real ceiling is whatever
+  # the camera and USB link deliver; this only caps how hard we poll.
+  target_fps: 30
+
+capture:
+  # Seconds to wait after the *last* command that could have disturbed the rig
+  # before actually firing the shutter. On a copy stand, residual vibration is
+  # the main cause of soft scans; this is the cheapest fix available.
+  settle_delay_s: 1.5
+
+  # Prefer the electronic (silent) shutter, which eliminates mechanical shutter
+  # shock. If the connected body does not expose the setting, the app warns and
+  # continues rather than refusing to work.
+  prefer_electronic_shutter: true
+
+  # Where downloaded captures are written. Relative paths resolve against the
+  # repository root. This directory is git-ignored.
+  output_dir: "captures"
+
+  # Delete the file from the camera's card after a verified download.
+  # Default is false: keeping the original on the card is the safer choice.
+  delete_from_camera_after_download: false
+
+film:
+  # Which inversion pipeline the preview uses by default: "bw" or "color".
+  # Both are first-class. This is only the startup default; the UI can switch.
+  mode: "bw"
+
+server:
+  # The local web UI. Bound to loopback by default -- do not expose this to a
+  # network you do not trust; it can fire your shutter.
+  host: "127.0.0.1"
+  port: 8000
+
+camera:
+  # Use the camera-free mock backend instead of EDSDK. Lets you develop the
+  # processing and UI layers with no SDK and no camera attached.
+  use_mock: true

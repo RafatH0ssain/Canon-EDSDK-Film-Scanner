@@ -1,0 +1,100 @@
+# ---------------------------------------------------------------------------
+# Canon EDSDK  --  NON-NEGOTIABLE
+#
+# Canon licenses EDSDK per developer and forbids redistribution. Headers,
+# binaries and the reference manual must never enter this repository or its
+# history. Keep your copy outside the repo, or in ./edsdk_sdk/ which is ignored.
+#
+# The binary patterns below are deliberately broad. Forcing an explicit
+# allow-list later is far cheaper than letting a Canon binary slip in once.
+# ---------------------------------------------------------------------------
+# Whole-directory rules first: an unpacked SDK archive contains readme text,
+# release notes and Canon's sample projects, none of which match a binary or
+# header pattern. Ignoring the unpack root is what actually keeps them out.
+edsdk_sdk/
+EDSDK_v*/
+EDSDK_*_Windows/
+EDSDK_*_Mac*/
+EDSDK/
+EDSDK_64/
+Dll/
+Header/
+Library/
+*.dll
+*.dylib
+*.so
+*.so.*
+*.framework/
+*.lib
+*.exp
+EDSDK*.h
+EdsStrings*
+*EDSDK*Reference*
+*EDSDK*API*
+*.pdf
+
+# ---------------------------------------------------------------------------
+# Secrets & local config  --  NON-NEGOTIABLE
+# config.yaml holds the path to your EDSDK copy. Never commit it.
+# ---------------------------------------------------------------------------
+config.yaml
+*.local.*
+.env
+.env.*
+
+# ---------------------------------------------------------------------------
+# User captures / scans  --  NON-NEGOTIABLE
+# Your negatives are yours. They do not belong in a public repo.
+# ---------------------------------------------------------------------------
+captures/
+scans/
+rolls/
+*.CR2
+*.CR3
+*.cr2
+*.cr3
+*.tif
+*.tiff
+*.jpg
+*.jpeg
+*.dng
+*.png
+# Allow-list for project assets we *do* want tracked.
+!docs/**/*.png
+!docs/**/*.jpg
+!tests/fixtures/**/*.png
+!src/cefs/app/static/**/*.png
+!src/cefs/app/static/**/*.svg
+
+# ---------------------------------------------------------------------------
+# Spike output  --  v0.0 measurements are notes, not artefacts
+# ---------------------------------------------------------------------------
+spike_output/
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# ---------------------------------------------------------------------------
+# Editors / OS
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
