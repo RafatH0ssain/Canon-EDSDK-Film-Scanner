@@ -608,8 +608,31 @@ class EdsdkCamera:
                 "  If it did shoot, the file may have gone to the card instead."
             )
 
-        item = c_void_p(self._pending_transfers.pop(0))
-        return self._download(item, destination_dir)
+        # RAW+JPEG sends one transfer per file, and the second lands slightly
+        # after the first. Returning as soon as one arrives silently keeps half
+        # the shot, so wait a moment for stragglers before draining the queue.
+        settle = time.perf_counter() + _EXTRA_TRANSFER_GRACE_S
+        while time.perf_counter() < settle:
+            pump_messages()
+            self._on_thread_pump_frame()
+            time.sleep(0.005)
+
+        paths: list[Path] = []
+        errors: list[str] = []
+        while self._pending_transfers:
+            item = c_void_p(self._pending_transfers.pop(0))
+            try:
+                paths.append(self._download(item, destination_dir))
+            except EdsError as exc:
+                # One failed file must not lose the ones that did arrive.
+                errors.append(str(exc))
+                logger.error("Download failed: %s", exc)
+        if not paths:
+            joined = "; ".join(errors) or "no transfer events arrived"
+            raise CameraError(f"Every file from this capture failed: {joined}")
+        if errors:
+            logger.warning("%d file(s) failed, %d saved", len(errors), len(paths))
+        return paths
 
     def _send_shutter(self) -> None:
         """Release the shutter without autofocus.

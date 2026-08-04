@@ -167,11 +167,14 @@ def _focus(camera, caps) -> None:
 def _capture(camera, output_dir: Path) -> None:
     print("\nCAPTURE -- this fires the shutter")
     started = time.perf_counter()
-    path = camera.capture(output_dir)
-    size = path.stat().st_size
+    paths = camera.capture(output_dir)
     elapsed = time.perf_counter() - started
-    print(f"  saved      : {path}")
-    print(f"  size       : {size / 1e6:.1f} MB in {elapsed:.1f} s")
+    # A list: one release can write several files, e.g. RAW+JPEG.
+    print(f"  files      : {len(paths)}")
+    for path in paths:
+        print(f"    {path.name:<24} {path.stat().st_size / 1e6:6.1f} MB")
+    total = sum(p.stat().st_size for p in paths)
+    print(f"  total      : {total / 1e6:.1f} MB in {elapsed:.1f} s")
 
 
 if __name__ == "__main__":
