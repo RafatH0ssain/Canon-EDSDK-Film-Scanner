@@ -42,11 +42,31 @@ class ViewUpdate(BaseModel):
     center_y: float | None = None
     peaking: bool | None = None
     peaking_sensitivity: float | None = None
+    inversion: str | None = None
 
 
 class FocusRequest(BaseModel):
     direction: str
     coarseness: str = "medium"
+
+
+class FilmUpdate(BaseModel):
+    mode: str | None = None
+    exposure: float | None = None
+    contrast: float | None = None
+    black_point: float | None = None
+    white_point: float | None = None
+    auto_balance: bool | None = None
+    channel_gain: list[float] | None = None
+
+
+class BaseSample(BaseModel):
+    """Region to sample the film base from, normalised 0-1.
+
+    Omit it to fall back to the automatic estimate.
+    """
+
+    region: list[float] | None = None
 
 
 def create_app(config: Config | None = None) -> FastAPI:
@@ -123,6 +143,25 @@ def create_app(config: Config | None = None) -> FastAPI:
         except CameraError as exc:
             # 409: the camera is fine, this lens just cannot be driven.
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/film")
+    def film(update: FilmUpdate) -> dict:
+        try:
+            return session.update_film(**update.model_dump(exclude_none=True))
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/film/base")
+    def film_base(sample: BaseSample) -> dict:
+        region = sample.region
+        if region is not None and len(region) != 4:
+            raise HTTPException(
+                status_code=422, detail="region must be [x, y, w, h] in 0-1 coordinates."
+            )
+        try:
+            return session.remeasure_film_base(region)
+        except CameraError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get("/api/sharpness")
     def sharpness() -> dict:

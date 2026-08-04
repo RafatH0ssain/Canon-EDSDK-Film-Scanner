@@ -16,6 +16,9 @@ PyYAML>=6.0,<7             # config.yaml
 # --- Image processing -------------------------------------------------------
 numpy>=1.26,<3
 opencv-python>=4.10,<5     # cv2: JPEG decode/encode, inversion, peaking
+# EDSDK cannot decode CR3 -- measured, see src/cefs/edsdk/decode.py -- so RAW
+# needs LibRaw. Ships as a wheel on Windows; no compiler required.
+rawpy>=0.22,<1
 
 # --- Local web UI -----------------------------------------------------------
 fastapi>=0.115,<1

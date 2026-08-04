@@ -23,6 +23,7 @@ import numpy as np
 from cefs.backend import CameraBackend, CameraError
 from cefs.config import Config
 from cefs.processing.codec import DecodeError, decode_jpeg, encode_jpeg
+from cefs.processing.film import FilmParams, analyse, invert_preview, srgb_to_linear
 from cefs.processing.invert import invert_linear
 from cefs.processing.loupe import crop_zoom
 from cefs.processing.peaking import DEFAULT_PEAK_COLOR, peaking_mask
@@ -42,6 +43,10 @@ class ViewState:
     center_y: float = 0.5
     peaking: bool = False
     peaking_sensitivity: float = 0.5
+
+    #: "film" is the real v0.3 pipeline; "linear" is the v0.1 flip, kept so the
+    #: difference can be seen side by side; "off" shows the negative.
+    inversion: str = "film"
 
 
 #: Focus steps sent per keypress, as ``(SDK step size, how many)``.
@@ -90,6 +95,11 @@ class Session:
         self._captures: list[dict] = []
         self._last_error: str = ""
         self._best_sharpness: float = 0.0
+        self.film = FilmParams(mode=config.film.mode)
+        # Measuring the film base costs ~30 ms and wanders slightly with grain,
+        # so it is measured on demand rather than per frame. Re-measured when
+        # the user asks, or when a parameter that changes its meaning changes.
+        self._measured: dict | None = None
 
     # --- lifecycle ----------------------------------------------------------
 
@@ -163,6 +173,7 @@ class Session:
                 "settle_delay_s": capture.settle_delay_s,
                 "output_dir": str(capture.resolved_output_dir()),
                 "captures": self._captures,
+                "film": self.film_status(),
             }
         caps = backend.capabilities
         return {
@@ -181,6 +192,7 @@ class Session:
                 "notes": dict(caps.notes),
             },
             "captures": self._captures,
+            "film": self.film_status(),
         }
 
     def update_view(self, **changes) -> dict:
@@ -196,6 +208,10 @@ class Session:
         self.view.peaking_sensitivity = max(
             0.0, min(float(self.view.peaking_sensitivity), 1.0)
         )
+        if self.view.inversion not in ("off", "linear", "film"):
+            raise ValueError(
+                f"inversion must be 'off', 'linear' or 'film', got {self.view.inversion!r}"
+            )
         return asdict(self.view)
 
     # --- frames -------------------------------------------------------------
@@ -229,11 +245,78 @@ class Session:
                 )
                 mask = cropped > 127
 
-        if view.invert:
-            frame = invert_linear(frame)
+        frame = self._apply_inversion(frame)
         if mask is not None:
             frame[mask] = DEFAULT_PEAK_COLOR
         return encode_jpeg(frame)
+
+    def _apply_inversion(self, frame):
+        """Apply whichever inversion the view asks for.
+
+        Both the preview and any saved output go through
+        :func:`cefs.processing.film.invert_preview`, so they cannot drift apart.
+        """
+        view = self.view
+        if not view.invert or view.inversion == "off":
+            return frame
+        if view.inversion == "linear":
+            return invert_linear(frame)
+        if self._measured is None:
+            self._measured = analyse(srgb_to_linear(frame[:, :, ::-1]), self.film)
+        return invert_preview(frame, self.film, self._measured)
+
+    def remeasure_film_base(self, region=None) -> dict:
+        """Re-measure the film base, optionally from a region of the frame.
+
+        Pointing at the rebate is far more reliable than the automatic estimate,
+        which assumes the densest part of the image approaches base density.
+        """
+        backend = self._backend
+        if backend is None:
+            raise CameraError("Not connected.")
+        payload = backend.latest_frame()
+        if payload is None:
+            raise CameraError("No frame available yet.")
+        linear = srgb_to_linear(decode_jpeg(payload)[:, :, ::-1])
+        params = self.film
+        if region is not None:
+            from cefs.processing.film import sample_base
+
+            params = params.replace(base=sample_base(linear, region=tuple(region)))
+            self.film = params
+        else:
+            self.film = params.replace(base=None)
+        self._measured = analyse(linear, self.film)
+        return self.film_status()
+
+    def update_film(self, **changes) -> dict:
+        """Change inversion parameters. Re-analyses when it must."""
+        changes = {k: v for k, v in changes.items() if v is not None}
+        if "channel_gain" in changes:
+            changes["channel_gain"] = tuple(float(v) for v in changes["channel_gain"])
+        self.film = self.film.replace(**changes)
+        # Mode and base change what the measurement means; the tonal controls
+        # only change the curve built from it, so they need no re-analysis.
+        if {"mode", "base", "auto_balance", "highlight_percentile"} & set(changes):
+            self._measured = None
+        return self.film_status()
+
+    def film_status(self) -> dict:
+        f = self.film
+        return {
+            "mode": f.mode,
+            "exposure": round(f.exposure, 3),
+            "contrast": round(f.contrast, 3),
+            "black_point": round(f.black_point, 4),
+            "white_point": round(f.white_point, 4),
+            "auto_balance": f.auto_balance,
+            "channel_gain": [round(v, 3) for v in f.channel_gain],
+            "base": [round(v, 5) for v in f.base] if f.base else None,
+            "measured": {
+                k: [round(x, 5) for x in v] for k, v in (self._measured or {}).items()
+            }
+            or None,
+        }
 
     def measure_sharpness(self) -> dict:
         """Relative sharpness of whatever the user is currently looking at.
