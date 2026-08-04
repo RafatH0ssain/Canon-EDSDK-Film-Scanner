@@ -7,6 +7,40 @@ Everything here is throwaway. Nothing should be built on top of it.
 
 ---
 
+## Recorded result — PASS
+
+**Canon EOS R7, USB-C, 2026-08-03. 20-second run.**
+
+| | measured |
+|---|---|
+| fps | **59.79** |
+| frame period (1/fps) | **17 ms** |
+| resolution | **960×640** |
+| inter-frame gap | median 15 ms, p95 25 ms, max 52 ms |
+| `EdsDownloadEvfImage` | median 13.7 ms, max 44.1 ms |
+| frame size | median 263 KB |
+| throughput | 15.33 MB/s |
+| stability (5 s windows) | 60.00 / 59.60 / 59.60 / 60.00 fps |
+| frames / not-ready polls | 1196 / 272 |
+
+**15.0× the 960×640 Wi-Fi baseline at identical resolution.** The gate is passed
+decisively; v0.1 proceeds.
+
+Two conclusions from the shape of these numbers, not just their size:
+
+- **The camera is the limit, not the cable.** Two windows sit at exactly 60.00 fps
+  and 272 polls found no frame ready, so the loop was outrunning the body's live-view
+  output. USB bandwidth is a non-issue, and there is nothing to gain from optimising
+  the transfer.
+- **Processing is now the near-bottleneck.** 60 fps leaves a ~17 ms per-frame budget,
+  and the sibling project measured host-side processing at 14.3 ms. Over Wi-Fi that
+  headroom was irrelevant; over USB it is the thing to watch in v0.1.
+
+Still outstanding from the v0.0 checklist: driving focus one step and confirming the
+frame changes. Run with `--focus-test` to close it.
+
+---
+
 ## What the gate actually is
 
 The CCAPI sibling project, over 2.4 GHz Wi-Fi, measured:

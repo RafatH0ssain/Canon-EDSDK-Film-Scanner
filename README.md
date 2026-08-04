@@ -4,7 +4,7 @@ Digitize film negatives with a Canon camera on a copy stand — focusing, framin
 
 Built on [EDSDK](https://developercommunity.usa.canon.com/), Canon's EOS Digital SDK. Works with black-and-white **and** colour negatives.
 
-> **Status: not yet started.** Nothing is implemented. The first milestone is a throwaway spike whose only job is to measure whether USB live view is actually fast enough to justify this project — see [ROADMAP.md](ROADMAP.md) §8.
+> **Status: v0.0 passed.** The premise is measured and confirmed — **59.79 fps / 17 ms at 960×640** over USB on an EOS R7, against 3.98 fps / 251 ms for the same frame size over Wi-Fi. That is 15× the frame rate at identical resolution. Details in [spike/README.md](spike/README.md). The app itself is not built yet; v0.1 is next.
 
 ---
 
@@ -14,15 +14,20 @@ There is a sibling project, **Canon Smart Film Scan**, that does the same job ov
 
 This project exists because on a real EOS R7 the wireless live view is slow, and the numbers say the network is why:
 
-| Live-view mode | fps | latency |
-|---|---|---|
-| 960×640 over Wi-Fi | 3.98 | **251 ms** |
-| 640×424 over Wi-Fi | 11.15 | **90 ms** |
-| Host-side processing | — | 14.3 ms |
+| Live-view mode | fps | frame period | throughput |
+|---|---|---|---|
+| 960×640 over Wi-Fi (CCAPI) | 3.98 | 251 ms | 1.23 MB/s |
+| 640×424 over Wi-Fi (CCAPI) | 11.15 | 90 ms | 0.82 MB/s |
+| **960×640 over USB (EDSDK)** | **59.79** | **17 ms** | **15.33 MB/s** |
+| Host-side processing | — | 14.3 ms | — |
 
-The processing could sustain ~70 fps. The link caps at ~1.2 MB/s, because the R7 is Wi-Fi 4 on 2.4 GHz with no Ethernet port — and **CCAPI has no USB transport at all**, so there is no way to fix this without changing SDK.
+The processing could sustain ~70 fps. The Wi-Fi link caps at ~1.2 MB/s, because the R7 is Wi-Fi 4 on 2.4 GHz with no Ethernet port — and **CCAPI has no USB transport at all**, so there was no way to fix this without changing SDK.
 
-EDSDK speaks PTP over USB. The R7's USB-C port is 10 Gbps, so bandwidth stops being the constraint.
+EDSDK speaks PTP over USB, and the measurement confirms bandwidth stops being the constraint: at 960×640 the R7 delivers a steady 59.6–60.0 fps over a 20-second run, with the loop frequently arriving before the camera had a frame ready. **The limit is now the camera's live-view output rate, not the link.**
+
+One consequence worth knowing before building on this: at 60 fps the per-frame budget is ~17 ms, and host-side processing was measured at 14.3 ms. Processing was never the bottleneck over Wi-Fi; over USB it very nearly is.
+
+> A note on the word *latency*: the figures above are frame periods — literally `1 / fps` — which is the quantity the CCAPI project quoted, so the comparison is like-for-like. True glass-to-glass lag (photon to pixel on your monitor) is a different and larger number that neither project has measured.
 
 ## What you trade for that
 
@@ -33,7 +38,7 @@ Be clear-eyed about this before starting:
 | Install | `pip install`, nothing else | You must obtain EDSDK from Canon yourself |
 | Connection | Wi-Fi, untethered | USB cable only |
 | Platforms | Windows, macOS, Linux | Windows first; macOS/Pi/Ubuntu possible |
-| Live-view latency | 90–251 ms measured | The whole point — to be measured |
+| Live-view frame period | 90–251 ms measured | **17 ms measured** at the larger frame size |
 | Complexity | HTTP and JSON | Native SDK via `ctypes`, single-apartment threading |
 
 ## What it deliberately does not do
