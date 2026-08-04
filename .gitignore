@@ -11,15 +11,22 @@
 # Whole-directory rules first: an unpacked SDK archive contains readme text,
 # release notes and Canon's sample projects, none of which match a binary or
 # header pattern. Ignoring the unpack root is what actually keeps them out.
+# The bare-directory rules are ANCHORED with a leading slash, and must stay
+# that way. Unanchored, `EDSDK/` matches at any depth -- and because git on
+# Windows compares ignore rules case-insensitively, it silently swallowed our
+# own source package `src/cefs/edsdk/`, native layer and all. A negation cannot
+# rescue it either: git does not descend into an excluded directory. Anchoring
+# still protects an SDK unpacked at the repository root, which is the case
+# these rules exist for.
 edsdk_sdk/
 EDSDK_v*/
 EDSDK_*_Windows/
 EDSDK_*_Mac*/
-EDSDK/
-EDSDK_64/
-Dll/
-Header/
-Library/
+/EDSDK/
+/EDSDK_64/
+/Dll/
+/Header/
+/Library/
 *.dll
 *.dylib
 *.so
