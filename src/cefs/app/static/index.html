@@ -65,6 +65,72 @@
           Click anywhere on the image to move the loupe. This enlarges pixels the
           camera already discarded when it downscaled the live-view stream.
         </p>
+        <p class="note" id="camera-zoom-note" hidden></p>
+      </div>
+
+      <div class="group">
+        <h2>Focus peaking</h2>
+        <label class="row">
+          <input type="checkbox" id="peaking">
+          <span>Highlight sharp edges <kbd>P</kbd></span>
+        </label>
+        <label class="row stacked">
+          <span>Sensitivity <output id="peaking-value">50%</output></span>
+          <input type="range" id="peaking-sensitivity" min="0" max="1" step="0.05" value="0.5">
+        </label>
+        <p class="note">
+          Sharp edges are marked red. Computed here rather than read from the
+          camera, so it works in autofocus mode &mdash; meaning you can drive
+          focus and watch peaking at the same time.
+        </p>
+      </div>
+
+      <div class="group">
+        <h2>Focus drive</h2>
+        <div id="focus-controls" hidden>
+          <div class="focus-grid">
+            <button data-dir="near" data-size="coarse" title="Near, large step">&laquo;&laquo;</button>
+            <button data-dir="near" data-size="medium" title="Near, medium step">&laquo;</button>
+            <button data-dir="near" data-size="fine" title="Near, small step">&lsaquo;</button>
+            <button data-dir="far" data-size="fine" title="Far, small step">&rsaquo;</button>
+            <button data-dir="far" data-size="medium" title="Far, medium step">&raquo;</button>
+            <button data-dir="far" data-size="coarse" title="Far, large step">&raquo;&raquo;</button>
+          </div>
+          <p class="note">
+            <kbd>&larr;</kbd><kbd>&rarr;</kbd> fine &middot;
+            <kbd>Shift</kbd> medium &middot; <kbd>Alt</kbd> coarse
+          </p>
+          <p class="note">
+            Each press sends several steps. One SDK step moves an RF macro lens
+            by less than the sensor noise, so a single-step control would feel
+            like nothing was happening.
+          </p>
+        </div>
+        <div id="focus-unavailable" class="warn" hidden>
+          <p id="focus-reason"></p>
+        </div>
+      </div>
+
+      <div class="group">
+        <h2>Sharpness</h2>
+        <label class="row">
+          <input type="checkbox" id="sharpness-on">
+          <span>Measure continuously <kbd>S</kbd></span>
+        </label>
+        <div id="sharpness-block" hidden>
+          <div class="meter"><div class="meter-fill" id="sharpness-bar"></div></div>
+          <dl class="facts">
+            <dt>Now</dt><dd id="sharpness-now">&mdash;</dd>
+            <dt>Best</dt><dd id="sharpness-best">&mdash;</dd>
+          </dl>
+          <p class="note">
+            Relative only &mdash; turn focus and watch it peak. Measures the
+            loupe's region when the loupe is up, otherwise the middle of the
+            frame. Values are meaningful within one focusing session and
+            nowhere else.
+          </p>
+          <button id="sharpness-reset">Reset best</button>
+        </div>
       </div>
 
       <div class="group">
@@ -88,9 +154,9 @@
       <div class="group">
         <h2>Not in this version</h2>
         <p class="note">
-          Focus stepping, peaking and the sharpness readout are v0.2. Proper
-          black &amp; white and colour inversion is v0.3. See
-          <code>ROADMAP.md</code>.
+          Proper black &amp; white and colour inversion is v0.3 &mdash; colour
+          negatives still preview cyan. Corner-by-corner alignment checking is
+          v0.4. See <code>ROADMAP.md</code>.
         </p>
       </div>
     </aside>

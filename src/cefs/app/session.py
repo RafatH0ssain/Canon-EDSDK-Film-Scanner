@@ -18,11 +18,15 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterator
 
+import numpy as np
+
 from cefs.backend import CameraBackend, CameraError
 from cefs.config import Config
 from cefs.processing.codec import DecodeError, decode_jpeg, encode_jpeg
 from cefs.processing.invert import invert_linear
 from cefs.processing.loupe import crop_zoom
+from cefs.processing.peaking import DEFAULT_PEAK_COLOR, peaking_mask
+from cefs.processing.sharpness import sharpness_of_region
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +40,43 @@ class ViewState:
     zoom: float = 4.0
     center_x: float = 0.5
     center_y: float = 0.5
+    peaking: bool = False
+    peaking_sensitivity: float = 0.5
+
+
+#: Focus steps sent per keypress, as ``(SDK step size, how many)``.
+#:
+#: Every entry sends several steps, because one step moves an RF85mm F2 MACRO
+#: by less than the frame-to-frame sensor noise. Calibrated on an EOS R7 by
+#: measuring mean absolute frame difference per press against that noise floor:
+#:
+#: - The first attempt used SDK size 1 for "fine" and measured **1.1x the noise
+#:   floor** -- literally invisible, the exact failure this mapping exists to
+#:   avoid.
+#: - Coarseness is not tied to SDK step size. Larger steps repeated fewer times
+#:   travel the same distance in less wall time, and each step costs ~24 ms of
+#:   round trip, so the finest SDK size is the *slowest* way to move a given
+#:   distance.
+#:
+#: Measured on an EOS R7, mean absolute frame difference per press against a
+#: noise floor of ~3.6, with the wall time each press costs:
+#:
+#: ========  =============  ========  =========  ========
+#: name      size x steps   travel    vs floor   latency
+#: ========  =============  ========  =========  ========
+#: fine      2 x 8          9.5       2.6x       0.19 s
+#: medium    3 x 8          17.6      4.9x       0.20 s
+#: coarse    3 x 20         23.0      6.4x       0.49 s
+#: ========  =============  ========  =========  ========
+#:
+#: Coarse travels 2.5x further than medium but measures only 1.3x higher: the
+#: difference metric saturates once the image is thoroughly defocused, so it
+#: under-reports large moves. Treat these as a floor on the real separation.
+FOCUS_STEPS = {
+    "fine": (2, 8),
+    "medium": (3, 8),
+    "coarse": (3, 20),
+}
 
 
 class Session:
@@ -48,6 +89,7 @@ class Session:
         self.view = ViewState(invert=True)
         self._captures: list[dict] = []
         self._last_error: str = ""
+        self._best_sharpness: float = 0.0
 
     # --- lifecycle ----------------------------------------------------------
 
@@ -151,6 +193,9 @@ class Session:
         self.view.zoom = max(1.0, min(float(self.view.zoom), 16.0))
         self.view.center_x = max(0.0, min(float(self.view.center_x), 1.0))
         self.view.center_y = max(0.0, min(float(self.view.center_y), 1.0))
+        self.view.peaking_sensitivity = max(
+            0.0, min(float(self.view.peaking_sensitivity), 1.0)
+        )
         return asdict(self.view)
 
     # --- frames -------------------------------------------------------------
@@ -158,17 +203,91 @@ class Session:
     def process(self, payload: bytes) -> bytes:
         """Apply the current view options to one JPEG frame.
 
-        The loupe is applied before inversion so magnification never changes
-        what inversion sees, and both preview and any future saved output run
-        through this same function.
+        Order matters, and not obviously:
+
+        Peaking is *measured* on the full-resolution frame before the loupe
+        crops it, because nearest-neighbour magnification leaves flat blocks
+        whose only edges are block boundaries -- peaking computed after zoom
+        gets sparser the further you zoom in, which is exactly backwards.
+
+        It is *applied* after inversion, because the overlay is a fixed colour.
+        Marking pixels red and then inverting would turn every one of them
+        cyan. So the mask is carried through the same crop as the image and
+        painted on at the end.
         """
         frame = decode_jpeg(payload)
         view = self.view
+
+        mask = peaking_mask(frame, view.peaking_sensitivity) if view.peaking else None
+
         if view.loupe and view.zoom > 1.0:
             frame = crop_zoom(frame, view.center_x, view.center_y, view.zoom)
+            if mask is not None:
+                # Same crop, nearest-neighbour, so marks stay on their pixels.
+                cropped = crop_zoom(
+                    mask.astype(np.uint8) * 255, view.center_x, view.center_y, view.zoom
+                )
+                mask = cropped > 127
+
         if view.invert:
             frame = invert_linear(frame)
+        if mask is not None:
+            frame[mask] = DEFAULT_PEAK_COLOR
         return encode_jpeg(frame)
+
+    def measure_sharpness(self) -> dict:
+        """Relative sharpness of whatever the user is currently looking at.
+
+        Measures the loupe's region when the loupe is up, so the number matches
+        the magnified view rather than the whole frame. Relative only: the
+        absolute value depends on subject and exposure, so it is meaningful
+        while turning focus back and forth and not between sessions.
+        """
+        backend = self._backend
+        if backend is None:
+            raise CameraError("Not connected.")
+        payload = backend.latest_frame()
+        if payload is None:
+            raise CameraError("No frame available yet.")
+
+        frame = decode_jpeg(payload)
+        view = self.view
+        if view.loupe and view.zoom > 1.0:
+            value = sharpness_of_region(
+                frame, view.center_x, view.center_y, size=1.0 / view.zoom
+            )
+        else:
+            value = sharpness_of_region(frame, view.center_x, view.center_y, size=0.5)
+
+        with self._lock:
+            if value > self._best_sharpness:
+                self._best_sharpness = value
+            best = self._best_sharpness
+        return {
+            "sharpness": round(value, 3),
+            "best": round(best, 3),
+            # How close to the best seen, for a meter the eye can follow. The
+            # raw number moves in single digits and is hard to read at a glance.
+            "fraction_of_best": round(value / best, 3) if best > 0 else 0.0,
+        }
+
+    def reset_sharpness_best(self) -> dict:
+        with self._lock:
+            self._best_sharpness = 0.0
+        return {"best": 0.0}
+
+    def drive_focus(self, direction: str, coarseness: str = "medium") -> dict:
+        """Step focus. Returns the step actually sent, for the UI to report."""
+        backend = self._backend
+        if backend is None:
+            raise CameraError("Not connected.")
+        if coarseness not in FOCUS_STEPS:
+            raise ValueError(
+                f"coarseness must be one of {', '.join(FOCUS_STEPS)}, got {coarseness!r}"
+            )
+        size, steps = FOCUS_STEPS[coarseness]
+        backend.drive_focus(direction, steps=steps, size=size)
+        return {"direction": direction, "coarseness": coarseness, "size": size, "steps": steps}
 
     def mjpeg(self, boundary: str = "frame") -> Iterator[bytes]:
         """Yield an endless multipart MJPEG stream for the browser."""

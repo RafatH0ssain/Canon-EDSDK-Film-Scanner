@@ -40,6 +40,13 @@ class ViewUpdate(BaseModel):
     zoom: float | None = None
     center_x: float | None = None
     center_y: float | None = None
+    peaking: bool | None = None
+    peaking_sensitivity: float | None = None
+
+
+class FocusRequest(BaseModel):
+    direction: str
+    coarseness: str = "medium"
 
 
 def create_app(config: Config | None = None) -> FastAPI:
@@ -102,6 +109,31 @@ def create_app(config: Config | None = None) -> FastAPI:
             media_type=f"multipart/x-mixed-replace; boundary={_BOUNDARY}",
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.post("/api/focus")
+    def focus(request: FocusRequest) -> dict:
+        if request.direction not in ("near", "far"):
+            raise HTTPException(
+                status_code=422, detail="direction must be 'near' or 'far'."
+            )
+        try:
+            return session.drive_focus(request.direction, request.coarseness)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except CameraError as exc:
+            # 409: the camera is fine, this lens just cannot be driven.
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/sharpness")
+    def sharpness() -> dict:
+        try:
+            return session.measure_sharpness()
+        except CameraError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.post("/api/sharpness/reset")
+    def sharpness_reset() -> dict:
+        return session.reset_sharpness_best()
 
     @app.post("/api/capture")
     def capture() -> JSONResponse:

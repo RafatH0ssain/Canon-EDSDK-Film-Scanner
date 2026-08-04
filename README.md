@@ -4,9 +4,9 @@ Digitize film negatives with a Canon camera on a copy stand — focusing, framin
 
 Built on [EDSDK](https://developercommunity.usa.canon.com/), Canon's EOS Digital SDK. Works with black-and-white **and** colour negatives.
 
-> **Status: v0.1 works on real hardware.** Live view, a focus loupe, remote capture with a settle delay, and a positive preview — all verified on an EOS R7. The premise that justified the project is measured and confirmed: **59.79 fps / 17 ms at 960×640** over USB, against 3.98 fps / 251 ms for the same frame size over Wi-Fi. Details in [spike/README.md](spike/README.md).
+> **Status: v0.2 works on real hardware.** Live view, a focus loupe, remote focus stepping, focus peaking, a sharpness readout, and remote capture with a settle delay — all verified on an EOS R7. The premise that justified the project is measured and confirmed: **59.79 fps / 17 ms at 960×640** over USB, against 3.98 fps / 251 ms for the same frame size over Wi-Fi. Details in [spike/README.md](spike/README.md).
 >
-> Colour negatives still preview cyan (v0.3), and focus stepping, peaking and the sharpness readout are not in the UI yet (v0.2). See [ROADMAP.md](ROADMAP.md).
+> Colour negatives still preview cyan — proper inversion is v0.3. See [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -82,6 +82,10 @@ python -m venv .venv                      # Python 3.10-3.13, 64-bit
 Open <http://127.0.0.1:8000/> and press Connect. You get a synthetic film
 negative with grain, an orange mask and a rebate — enough to develop against.
 
+Keyboard: <kbd>Space</kbd> capture · <kbd>←</kbd><kbd>→</kbd> focus
+(<kbd>Shift</kbd> medium, <kbd>Alt</kbd> coarse) · <kbd>I</kbd> invert ·
+<kbd>L</kbd> loupe · <kbd>P</kbd> peaking · <kbd>S</kbd> sharpness.
+
 **With a real camera:**
 
 1. Copy `config.example.yaml` to `config.yaml`.
@@ -104,7 +108,10 @@ control — it can fire your shutter.
 |---|---|
 | Live view | 960×640, ~60 fps available, 30 fps default |
 | Capture download | ~10 MB/s (a 14.6 MB HEIF in ~1.4 s) |
-| Focus drive | works, but one step is below the frame noise — steps must accumulate |
+| Focus drive | works; 0.15–0.41 s per keypress depending on coarseness |
+| Focus steps | one SDK step is below the frame noise, so each press sends 8–20 |
+| Peaking | +7.4 ms/frame; whole pipeline 14.9 ms, still inside the 17 ms budget at 60 fps |
+| Sharpness metric | gated Tenengrad, **11.1×** separation on real frames |
 | Camera-side live-view zoom | **not available** over EDSDK; the software loupe is the only magnification |
 | Electronic shutter | **not selectable** over EDSDK — set Shutter mode in the camera menu |
 
@@ -115,8 +122,8 @@ control — it can fire your shutter.
   its orange mask. Doing it properly is v0.3 and needs a real pipeline.
 - **The preview is inverted; the saved file is not.** Captures are always kept
   exactly as the camera wrote them. Inverting captured files is v0.3.
-- **No focus stepping, peaking or sharpness readout in the UI yet.** The
-  processing for the latter two is present and tested; wiring is v0.2.
+- **Corner-by-corner alignment checking is not built yet.** The per-region
+  sharpness it needs is present and tested; the checker itself is v0.4.
 - **Windows only so far.** The message pump is platform-specific and isolated,
   so macOS and Linux remain possible, but neither is done.
 

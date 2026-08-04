@@ -31,11 +31,26 @@ const els = {
   shutterMode: $("shutter-mode"),
   outputDir: $("output-dir"),
   toast: $("toast"),
+  peaking: $("peaking"),
+  peakingSensitivity: $("peaking-sensitivity"),
+  peakingValue: $("peaking-value"),
+  focusControls: $("focus-controls"),
+  focusUnavailable: $("focus-unavailable"),
+  focusReason: $("focus-reason"),
+  cameraZoomNote: $("camera-zoom-note"),
+  sharpnessOn: $("sharpness-on"),
+  sharpnessBlock: $("sharpness-block"),
+  sharpnessBar: $("sharpness-bar"),
+  sharpnessNow: $("sharpness-now"),
+  sharpnessBest: $("sharpness-best"),
+  sharpnessReset: $("sharpness-reset"),
 };
 
 let connected = false;
 let capturing = false;
 let toastTimer = null;
+let focusBusy = false;
+let sharpnessTimer = null;
 
 function toast(message, bad = false) {
   els.toast.textContent = message;
@@ -89,6 +104,26 @@ function render(status) {
     els.loupe.checked = status.view.loupe;
     els.zoom.value = status.view.zoom;
     els.zoomValue.textContent = `${Number(status.view.zoom).toFixed(1)}×`;
+    els.peaking.checked = status.view.peaking;
+    els.peakingSensitivity.value = status.view.peaking_sensitivity;
+    els.peakingValue.textContent = `${Math.round(status.view.peaking_sensitivity * 100)}%`;
+  }
+
+  // Focus controls appear only when this lens can actually be driven, and an
+  // absent control explains itself rather than silently vanishing.
+  const canFocus = connected && caps && caps.focus_drive;
+  els.focusControls.hidden = !canFocus;
+  els.focusUnavailable.hidden = !connected || canFocus;
+  if (connected && caps && !caps.focus_drive) {
+    els.focusReason.textContent =
+      caps.notes.focus_drive || "This lens cannot be driven from the computer.";
+  }
+
+  if (connected && caps && !caps.liveview_zoom && caps.notes.liveview_zoom) {
+    els.cameraZoomNote.textContent = caps.notes.liveview_zoom;
+    els.cameraZoomNote.hidden = false;
+  } else {
+    els.cameraZoomNote.hidden = true;
   }
 
   els.preview.hidden = !connected;
@@ -208,12 +243,97 @@ async function doCapture() {
 
 els.capture.addEventListener("click", doCapture);
 
+// --- peaking ----------------------------------------------------------------
+
+els.peaking.addEventListener("change", () => setView({ peaking: els.peaking.checked }));
+
+els.peakingSensitivity.addEventListener("input", () => {
+  const value = Number(els.peakingSensitivity.value);
+  els.peakingValue.textContent = `${Math.round(value * 100)}%`;
+  setView({ peaking_sensitivity: value });
+});
+
+// --- focus ------------------------------------------------------------------
+
+async function driveFocus(direction, coarseness) {
+  // Drop presses while one is in flight. Focus commands are paced on the
+  // camera thread, so queueing them up makes the lens keep moving long after
+  // you stop pressing.
+  if (!connected || focusBusy) return;
+  focusBusy = true;
+  try {
+    await api("/api/focus", {
+      method: "POST",
+      body: JSON.stringify({ direction, coarseness }),
+    });
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    focusBusy = false;
+  }
+}
+
+els.focusControls.querySelectorAll("button").forEach((button) => {
+  button.addEventListener("click", () =>
+    driveFocus(button.dataset.dir, button.dataset.size)
+  );
+});
+
+// --- sharpness --------------------------------------------------------------
+
+async function pollSharpness() {
+  if (!connected || !els.sharpnessOn.checked) return;
+  try {
+    const body = await api("/api/sharpness");
+    els.sharpnessNow.textContent = body.sharpness.toFixed(2);
+    els.sharpnessBest.textContent = body.best.toFixed(2);
+    els.sharpnessBar.style.width = `${Math.round(body.fraction_of_best * 100)}%`;
+  } catch {
+    // A frame may not be ready between reconnects; the next tick retries.
+  }
+}
+
+function setSharpnessPolling(on) {
+  els.sharpnessBlock.hidden = !on;
+  clearInterval(sharpnessTimer);
+  sharpnessTimer = null;
+  if (on) {
+    // 4 Hz: fast enough to follow a focus ring, slow enough that the ~5 ms
+    // measurement never competes with the stream.
+    sharpnessTimer = setInterval(pollSharpness, 250);
+    pollSharpness();
+  }
+}
+
+els.sharpnessOn.addEventListener("change", () => setSharpnessPolling(els.sharpnessOn.checked));
+
+els.sharpnessReset.addEventListener("click", async () => {
+  await api("/api/sharpness/reset", { method: "POST" });
+  els.sharpnessBest.textContent = "—";
+  els.sharpnessBar.style.width = "0%";
+});
+
+// --- keyboard ---------------------------------------------------------------
+
 document.addEventListener("keydown", (event) => {
   if (event.target.matches("input, textarea")) return;
   if (event.code === "Space") { event.preventDefault(); doCapture(); return; }
+
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    event.preventDefault();
+    const coarseness = event.altKey ? "coarse" : event.shiftKey ? "medium" : "fine";
+    driveFocus(event.key === "ArrowLeft" ? "near" : "far", coarseness);
+    return;
+  }
+
   const key = event.key.toLowerCase();
   if (key === "i") { els.invert.checked = !els.invert.checked; setView({ invert: els.invert.checked }); }
   if (key === "l") { els.loupe.checked = !els.loupe.checked; els.loupe.dispatchEvent(new Event("change")); }
+  if (key === "p") { els.peaking.checked = !els.peaking.checked; setView({ peaking: els.peaking.checked }); }
+  if (key === "s") {
+    els.sharpnessOn.checked = !els.sharpnessOn.checked;
+    setSharpnessPolling(els.sharpnessOn.checked);
+  }
 });
 
 els.preview.addEventListener("error", () => {
