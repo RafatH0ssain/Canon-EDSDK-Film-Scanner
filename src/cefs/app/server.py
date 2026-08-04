@@ -110,7 +110,12 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.post("/api/view")
     def view(update: ViewUpdate) -> dict:
-        return session.update_view(**update.model_dump(exclude_none=True))
+        try:
+            return session.update_view(**update.model_dump(exclude_none=True))
+        except ValueError as exc:
+            # A bad value is the caller's fault, not the server's; a 500 here
+            # would send someone hunting through server logs for their typo.
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/api/frame")
     def frame():

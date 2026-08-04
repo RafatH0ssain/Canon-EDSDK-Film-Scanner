@@ -44,7 +44,22 @@ const els = {
   sharpnessNow: $("sharpness-now"),
   sharpnessBest: $("sharpness-best"),
   sharpnessReset: $("sharpness-reset"),
+  filmMode: $("film-mode"),
+  inversionMode: $("inversion-mode"),
+  sampleBase: $("sample-base"),
+  baseNote: $("base-note"),
+  filmExposure: $("film-exposure"),
+  filmExposureValue: $("film-exposure-value"),
+  filmContrast: $("film-contrast"),
+  filmContrastValue: $("film-contrast-value"),
+  filmReset: $("film-reset"),
 };
+
+function setSegmented(container, value) {
+  container.querySelectorAll("button").forEach((b) =>
+    b.classList.toggle("active", b.dataset.value === String(value))
+  );
+}
 
 let connected = false;
 let capturing = false;
@@ -129,6 +144,16 @@ function render(status) {
   els.preview.hidden = !connected;
   els.placeholder.hidden = connected;
   els.loupeHint.hidden = !connected || !els.loupe.checked;
+
+  if (status.film) {
+    setSegmented(els.filmMode, status.film.mode);
+    els.filmExposure.value = status.film.exposure;
+    els.filmExposureValue.textContent = `${Number(status.film.exposure).toFixed(2)}×`;
+    els.filmContrast.value = status.film.contrast;
+    els.filmContrastValue.textContent = Number(status.film.contrast).toFixed(2);
+    els.baseNote.dataset.measured = status.film.base ? "yes" : "no";
+  }
+  if (status.view) setSegmented(els.inversionMode, status.view.inversion);
 
   renderCaptures(status.captures || []);
 
@@ -216,6 +241,8 @@ els.preview.addEventListener("click", (event) => {
   const x = (event.clientX - box.left - offX) / w;
   const y = (event.clientY - box.top - offY) / h;
   if (x < 0 || x > 1 || y < 0 || y > 1) return;
+  els.zoom.dataset.cx = x;
+  els.zoom.dataset.cy = y;
   setView({ center_x: x, center_y: y, loupe: true });
   els.loupe.checked = true;
   els.loupeHint.hidden = false;
@@ -311,6 +338,72 @@ els.sharpnessReset.addEventListener("click", async () => {
   await api("/api/sharpness/reset", { method: "POST" });
   els.sharpnessBest.textContent = "—";
   els.sharpnessBar.style.width = "0%";
+});
+
+// --- film inversion ---------------------------------------------------------
+
+async function setFilm(changes) {
+  try {
+    const body = await api("/api/film", { method: "POST", body: JSON.stringify(changes) });
+    setSegmented(els.filmMode, body.mode);
+    return body;
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+els.filmMode.querySelectorAll("button").forEach((button) => {
+  button.addEventListener("click", () => setFilm({ mode: button.dataset.value }));
+});
+
+els.inversionMode.querySelectorAll("button").forEach((button) => {
+  button.addEventListener("click", async () => {
+    setSegmented(els.inversionMode, button.dataset.value);
+    await setView({ inversion: button.dataset.value, invert: button.dataset.value !== "off" });
+    els.invert.checked = button.dataset.value !== "off";
+  });
+});
+
+els.filmExposure.addEventListener("input", () => {
+  const v = Number(els.filmExposure.value);
+  els.filmExposureValue.textContent = `${v.toFixed(2)}×`;
+  setFilm({ exposure: v });
+});
+
+els.filmContrast.addEventListener("input", () => {
+  const v = Number(els.filmContrast.value);
+  els.filmContrastValue.textContent = v.toFixed(2);
+  setFilm({ contrast: v });
+});
+
+els.filmReset.addEventListener("click", async () => {
+  await setFilm({ exposure: 1.0, contrast: 1.65 });
+  await api("/api/film/base", { method: "POST", body: JSON.stringify({}) });
+  await refresh();
+  toast("Inversion settings reset");
+});
+
+els.sampleBase.addEventListener("click", async () => {
+  // Sample whatever the loupe is centred on. Its width comes from the zoom, so
+  // a tighter loupe gives a tighter sample -- which is what you want when the
+  // rebate is a narrow strip.
+  const half = 0.5 / Math.max(Number(els.zoom.value), 1);
+  const cx = Number(els.zoom.dataset.cx ?? 0.5);
+  const cy = Number(els.zoom.dataset.cy ?? 0.5);
+  const region = [
+    Math.max(0, cx - half), Math.max(0, cy - half),
+    Math.min(1, 2 * half), Math.min(1, 2 * half),
+  ];
+  try {
+    const body = await api("/api/film/base", {
+      method: "POST",
+      body: JSON.stringify({ region }),
+    });
+    const b = body.base;
+    toast(b ? `Film base R=${b[0].toFixed(3)} G=${b[1].toFixed(3)} B=${b[2].toFixed(3)}` : "Base reset");
+  } catch (err) {
+    toast(err.message, true);
+  }
 });
 
 // --- keyboard ---------------------------------------------------------------

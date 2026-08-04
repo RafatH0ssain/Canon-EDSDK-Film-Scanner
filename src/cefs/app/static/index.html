@@ -43,11 +43,52 @@
           <input type="checkbox" id="invert" checked>
           <span>Invert to positive <kbd>I</kbd></span>
         </label>
+
+        <label class="row stacked">
+          <span>Film type</span>
+          <div class="segmented" id="film-mode">
+            <button data-value="bw">B&amp;W</button>
+            <button data-value="color">Colour</button>
+          </div>
+        </label>
+
+        <label class="row stacked">
+          <span>Method</span>
+          <div class="segmented" id="inversion-mode">
+            <button data-value="film">Film</button>
+            <button data-value="linear">Linear</button>
+            <button data-value="off">Off</button>
+          </div>
+        </label>
         <p class="note">
-          v0.1 uses a plain linear inversion. Fine for black &amp; white; colour
-          negatives will look cyan until the real colour pipeline lands in v0.3.
-          This affects the <em>preview only</em> &mdash; the captured file is always
-          saved untouched.
+          <strong>Film</strong> is the real pipeline: it measures the film base,
+          divides out the orange mask and inverts density properly.
+          <strong>Linear</strong> is the old v0.1 flip, kept so you can see the
+          difference &mdash; on colour negatives it comes out cyan.
+        </p>
+
+        <button id="sample-base">Sample film base from loupe area</button>
+        <p class="note" id="base-note">
+          Put the loupe over the <em>rebate</em> &mdash; the clear unexposed border
+          between frames &mdash; then press this. Measuring the real base beats the
+          automatic guess, which assumes the densest part of the picture is close
+          to base density.
+        </p>
+
+        <label class="row stacked">
+          <span>Exposure <output id="film-exposure-value">1.00&times;</output></span>
+          <input type="range" id="film-exposure" min="0.25" max="4" step="0.05" value="1">
+        </label>
+        <label class="row stacked">
+          <span>Contrast <output id="film-contrast-value">1.65</output></span>
+          <input type="range" id="film-contrast" min="0.6" max="3" step="0.05" value="1.65">
+        </label>
+        <button id="film-reset">Reset inversion settings</button>
+
+        <p class="note">
+          This affects the <em>preview only</em>. The captured file is always saved
+          exactly as the camera wrote it &mdash; inverting downloaded files is not
+          wired up yet.
         </p>
       </div>
 

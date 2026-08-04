@@ -197,6 +197,7 @@ class Session:
 
     def update_view(self, **changes) -> dict:
         """Apply view changes from the UI, ignoring unknown keys."""
+        previous_inversion = self.view.inversion
         for key, value in changes.items():
             if value is None or not hasattr(self.view, key):
                 continue
@@ -209,9 +210,8 @@ class Session:
             0.0, min(float(self.view.peaking_sensitivity), 1.0)
         )
         if self.view.inversion not in ("off", "linear", "film"):
-            raise ValueError(
-                f"inversion must be 'off', 'linear' or 'film', got {self.view.inversion!r}"
-            )
+            bad, self.view.inversion = self.view.inversion, previous_inversion
+            raise ValueError(f"inversion must be 'off', 'linear' or 'film', got {bad!r}")
         return asdict(self.view)
 
     # --- frames -------------------------------------------------------------

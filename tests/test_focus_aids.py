@@ -140,8 +140,12 @@ def test_focus_actually_changes_the_image(client):
     before = _sharpness_now(client)
     for _ in range(6):
         client.post("/api/focus", json={"direction": "near", "coarseness": "coarse"})
-    time.sleep(0.4)
-    after = _sharpness_now(client)
+
+    # Wait for the change rather than sleeping a fixed time. The mock renders
+    # on its own thread, so under load the new frame can take far longer than
+    # any constant chosen here -- which made this test fail intermittently
+    # while other work was running on the machine.
+    after = _wait_for_change(client, before)
     assert after != pytest.approx(before, rel=0.05)
 
 
@@ -162,14 +166,16 @@ def test_sharpness_reports_now_and_best(client):
 
 def test_sharpness_best_is_sticky(client):
     """Best must not fall when focus worsens -- that is what makes it useful."""
+    start = _sharpness_now(client)
     for _ in range(6):
         client.post("/api/focus", json={"direction": "near", "coarseness": "coarse"})
-    time.sleep(0.4)
+    _wait_for_change(client, start)
     best_after_sharp = _sharpness_body(client)["best"]
 
+    moved = _sharpness_now(client)
     for _ in range(8):
         client.post("/api/focus", json={"direction": "far", "coarseness": "coarse"})
-    time.sleep(0.4)
+    _wait_for_change(client, moved)
     body = _sharpness_body(client)
     assert body["best"] >= best_after_sharp - 1e-9
     assert body["sharpness"] <= body["best"] + 1e-9
@@ -229,3 +235,19 @@ def _sharpness_body(client, timeout_s: float = 5.0) -> dict:
 
 def _sharpness_now(client) -> float:
     return _sharpness_body(client)["sharpness"]
+
+
+def _wait_for_change(client, baseline: float, timeout_s: float = 8.0) -> float:
+    """Poll until the reading moves away from ``baseline``, or time out.
+
+    Returns the last reading either way, so the caller's assertion still
+    reports the real numbers rather than a timeout message.
+    """
+    deadline = time.perf_counter() + timeout_s
+    value = baseline
+    while time.perf_counter() < deadline:
+        value = _sharpness_now(client)
+        if value != pytest.approx(baseline, rel=0.05):
+            return value
+        time.sleep(0.05)
+    return value
