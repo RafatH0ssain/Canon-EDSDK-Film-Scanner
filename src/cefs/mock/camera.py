@@ -119,7 +119,7 @@ class MockCamera:
             self._focus_error += -delta if direction == "near" else delta
             self._focus_error = float(np.clip(self._focus_error, 0.0, _FOCUS_RANGE))
 
-    def capture(self, destination_dir: Path) -> Path:
+    def capture(self, destination_dir: Path) -> list[Path]:
         destination_dir = Path(destination_dir)
         destination_dir.mkdir(parents=True, exist_ok=True)
         if self._settle_delay_s > 0:
@@ -141,7 +141,8 @@ class MockCamera:
         )
         destination = _unique_path(destination_dir / f"MOCK_{index:04d}.jpg")
         destination.write_bytes(encode_jpeg(frame, quality=95))
-        return destination
+        # A list, matching the real backend: one release can write several files.
+        return [destination]
 
     # --- the frame generator ------------------------------------------------
 

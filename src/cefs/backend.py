@@ -88,9 +88,11 @@ class CameraBackend(Protocol):
             size: 1 finest, 3 coarsest.
         """
 
-    def capture(self, destination_dir: Path) -> Path:
-        """Fire the shutter and download the result.
+    def capture(self, destination_dir: Path) -> list[Path]:
+        """Fire the shutter and download everything it produced.
 
-        Returns the path written. The original is always kept -- inversion and
-        any other processing produce new files.
+        Returns a list because one release can write more than one file: with
+        the camera set to RAW+JPEG it sends a separate transfer for each. The
+        originals are always kept -- inversion and any other processing write
+        new files alongside them.
         """

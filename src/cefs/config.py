@@ -84,6 +84,10 @@ class CaptureConfig:
     output_dir: str = "captures"
     delete_from_camera_after_download: bool = False
 
+    # Write an inverted positive beside each capture, using the same settings
+    # the preview shows. Never modifies or replaces the original.
+    develop_positives: bool = True
+
     def resolved_output_dir(self) -> Path:
         """Absolute output directory, resolving relative paths against the repo."""
         p = Path(self.output_dir).expanduser()

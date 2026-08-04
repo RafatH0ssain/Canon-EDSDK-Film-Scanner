@@ -54,6 +54,11 @@ capture:
   # Default is false: keeping the original on the card is the safer choice.
   delete_from_camera_after_download: false
 
+  # After downloading, write an inverted positive beside each capture using the
+  # same settings the live preview is showing. RAW becomes a 16-bit TIFF;
+  # JPEG/HEIF becomes a JPEG. The original is never modified or overwritten.
+  develop_positives: true
+
 film:
   # Which inversion pipeline the preview uses by default: "bw" or "color".
   # Both are first-class. This is only the startup default; the UI can switch.

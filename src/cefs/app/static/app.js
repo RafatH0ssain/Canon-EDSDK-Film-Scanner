@@ -191,8 +191,17 @@ function renderCaptures(items) {
   els.captures.innerHTML = items
     .map((c) => {
       const mb = (c.bytes / 1e6).toFixed(1);
-      return `<li><span class="name">${c.name}</span>
-              <span class="meta">${mb} MB &middot; ${c.seconds}s</span></li>`;
+      const files = c.files || [{ name: c.name }];
+      const count = c.count > 1 ? ` &middot; ${c.count} files` : "";
+      const positives = files.filter((f) => f.positive).map((f) => f.positive);
+      const errors = files.filter((f) => f.error).map((f) => f.error);
+      const developed = positives.length
+        ? `<span class="meta">&rarr; ${positives.join(", ")}</span>` : "";
+      const failed = errors.length
+        ? `<span class="meta bad">${errors[0]}</span>` : "";
+      return `<li><span class="name">${files.map((f) => f.name).join(", ")}</span>
+              <span class="meta">${mb} MB &middot; ${c.seconds}s${count}</span>
+              ${developed}${failed}</li>`;
     })
     .join("");
 }

@@ -23,6 +23,7 @@ import numpy as np
 from cefs.backend import CameraBackend, CameraError
 from cefs.config import Config
 from cefs.processing.codec import DecodeError, decode_jpeg, encode_jpeg
+from cefs.processing.develop import DevelopError, develop
 from cefs.processing.film import FilmParams, analyse, invert_preview, srgb_to_linear
 from cefs.processing.invert import invert_linear
 from cefs.processing.loupe import crop_zoom
@@ -407,18 +408,40 @@ class Session:
     # --- actions ------------------------------------------------------------
 
     def capture(self) -> dict:
-        """Fire the shutter and record the downloaded file."""
+        """Fire the shutter, download everything, and optionally develop it."""
         backend = self._backend
         if backend is None:
             raise CameraError("Not connected.")
         started = time.perf_counter()
-        path = backend.capture(self._config.capture.resolved_output_dir())
-        entry = {
-            "name": Path(path).name,
-            "path": str(path),
-            "bytes": Path(path).stat().st_size if Path(path).exists() else 0,
+        paths = [Path(p) for p in backend.capture(self._config.capture.resolved_output_dir())]
+
+        files = []
+        for path in paths:
+            entry = {
+                "name": path.name,
+                "path": str(path),
+                "bytes": path.stat().st_size if path.exists() else 0,
+                "positive": None,
+                "error": "",
+            }
+            if self._config.capture.develop_positives:
+                try:
+                    positive = develop(path, self.film)
+                    entry["positive"] = positive.name
+                except DevelopError as exc:
+                    # A failed development must not lose the capture itself --
+                    # the original is the one thing that cannot be regenerated.
+                    entry["error"] = str(exc)
+                    logger.error("Could not develop %s: %s", path.name, exc)
+            files.append(entry)
+
+        record = {
+            "name": files[0]["name"],
+            "files": files,
+            "count": len(files),
+            "bytes": sum(f["bytes"] for f in files),
             "seconds": round(time.perf_counter() - started, 1),
         }
-        self._captures.insert(0, entry)
+        self._captures.insert(0, record)
         del self._captures[24:]
-        return entry
+        return record

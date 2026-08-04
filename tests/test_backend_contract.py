@@ -121,18 +121,21 @@ def test_single_step_is_nearly_invisible(camera):
     assert many > one * 5
 
 
-def test_capture_writes_a_file(camera, tmp_path):
-    path = camera.capture(tmp_path)
-    assert path.exists()
-    assert path.stat().st_size > 0
-    assert path.parent == tmp_path
+def test_capture_returns_a_list_of_files(camera, tmp_path):
+    """One release can write several files -- RAW+JPEG sends a transfer each."""
+    paths = camera.capture(tmp_path)
+    assert isinstance(paths, list) and paths
+    for path in paths:
+        assert path.exists()
+        assert path.stat().st_size > 0
+        assert path.parent == tmp_path
 
 
 def test_capture_never_overwrites(camera, tmp_path):
     """The original capture is the one thing that cannot be regenerated."""
-    first = camera.capture(tmp_path)
+    first = camera.capture(tmp_path)[0]
     first.write_bytes(b"sentinel")
-    second = camera.capture(tmp_path)
+    second = camera.capture(tmp_path)[0]
     assert second != first
     assert first.read_bytes() == b"sentinel"
 
