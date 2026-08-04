@@ -123,18 +123,19 @@ were calibrated on one scene.
   - <kbd>Alt</kbd> = **coarse**
 
 ✅ **Good:**
-- Every press produces a **visible** change. Fine should be small but not
-  invisible — measured at 2.6× the frame noise, which is deliberately near the
-  threshold of perceptibility.
+- Every press produces a **visible** change through the loupe. **Fine is now a
+  single step of the SDK's smallest size** — the finest move EDSDK offers, at
+  ~22 ms per press. There is nothing below it.
 - The **Now** number peaks as you pass best focus and falls either side. Walk
   focus back and forth and find the peak by the number alone.
 - **Best** sticks at the highest value seen. **Reset best** clears it.
 - Response feels prompt: ~0.15 s for fine/medium, ~0.5 s for coarse.
 
 ❌ **Report if:**
-- **Fine steps feel invisible.** This is the single most likely thing to be
-  wrong on a different scene — it is exactly the failure I hit and fixed once
-  already, and the fix was calibrated against one subject.
+- **Fine steps still feel too coarse.** If so, the SDK's own minimum is the
+  limit and the answer is a different approach, not a smaller number.
+- **Fine steps now feel too small to be useful** for general focusing — use
+  Shift (medium) to travel and plain arrows only to nail the peak.
 - Coarse feels uselessly large, or too slow.
 - The sharpness number wanders randomly instead of tracking focus. Note the
   rough range it sits in — on my test frames it read single digits to ~20.

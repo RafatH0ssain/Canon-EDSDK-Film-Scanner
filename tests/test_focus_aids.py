@@ -98,21 +98,32 @@ def test_peaking_off_leaves_no_marks(config, payload):
 # --- focus stepping ----------------------------------------------------------
 
 
-def test_every_coarseness_sends_more_than_one_step():
-    """A single step is below the frame noise on a real RF macro lens.
+def test_fine_is_the_smallest_step_the_sdk_offers():
+    """Fine must be one step of size 1 -- there is nothing finer to reach.
 
-    This is the whole reason the mapping exists, so it is worth asserting
-    rather than leaving to a comment someone later 'tidies up'.
+    This assertion used to be the opposite: every tier had to send more than one
+    step, because a single step measured below the frame-noise floor. That
+    reasoning came from a whole-frame difference metric, which turned out to be
+    blind at the fine end -- everything from 1x1 to 2x8 measured the same. A
+    person judging focus through an 8x loupe with a sharpness readout resolves
+    far smaller moves than that average can, and asked for finer steps.
     """
-    for name, (size, steps) in FOCUS_STEPS.items():
+    assert FOCUS_STEPS["fine"] == (1, 1)
+
+
+def test_coarser_tiers_send_several_steps():
+    """Medium and coarse must accumulate, or they would not differ from fine."""
+    for name in ("medium", "coarse"):
+        size, steps = FOCUS_STEPS[name]
         assert steps > 1, f"{name} sends only {steps} step"
         assert 1 <= size <= 3
 
 
-def test_coarseness_is_monotonic():
-    """Coarser must move further than finer, or the labels lie."""
-    fine, medium, coarse = (FOCUS_STEPS[k] for k in ("fine", "medium", "coarse"))
-    assert fine[0] <= medium[0] <= coarse[0]
+def test_tiers_are_ordered_by_travel():
+    """Each tier must move strictly further than the one below it."""
+    travel = [size * steps for size, steps in
+              (FOCUS_STEPS[k] for k in ("fine", "medium", "coarse"))]
+    assert travel[0] < travel[1] < travel[2], travel
 
 
 def test_focus_endpoint_drives(client):

@@ -53,6 +53,8 @@ const els = {
   filmContrast: $("film-contrast"),
   filmContrastValue: $("film-contrast-value"),
   filmReset: $("film-reset"),
+  filmControls: $("film-controls"),
+  filmDisabledNote: $("film-disabled-note"),
 };
 
 function setSegmented(container, value) {
@@ -155,6 +157,22 @@ function render(status) {
   }
   if (status.view) setSegmented(els.inversionMode, status.view.inversion);
 
+  // Exposure, contrast and the base only feed the film pipeline. Rather than
+  // leaving them looking live but doing nothing, disable them and say why.
+  const filmActive = status.view && status.view.invert && status.view.inversion === "film";
+  els.filmControls.querySelectorAll("button, input").forEach((el) => {
+    el.disabled = !filmActive;
+  });
+  els.filmControls.style.opacity = filmActive ? "1" : "0.45";
+  if (filmActive) {
+    els.filmDisabledNote.hidden = true;
+  } else {
+    els.filmDisabledNote.hidden = false;
+    els.filmDisabledNote.textContent = !status.view.invert
+      ? "Inversion is off, so these do nothing. Tick Invert to positive."
+      : "Linear inversion ignores these. Switch Method to Film.";
+  }
+
   renderCaptures(status.captures || []);
 
   if (connected && !els.preview.src) {
@@ -212,7 +230,10 @@ els.connect.addEventListener("click", async () => {
   }
 });
 
-els.invert.addEventListener("change", () => setView({ invert: els.invert.checked }));
+els.invert.addEventListener("change", async () => {
+  await setView({ invert: els.invert.checked });
+  await refresh();
+});
 
 els.loupe.addEventListener("change", () => {
   els.loupeHint.hidden = !connected || !els.loupe.checked;
@@ -359,8 +380,9 @@ els.filmMode.querySelectorAll("button").forEach((button) => {
 els.inversionMode.querySelectorAll("button").forEach((button) => {
   button.addEventListener("click", async () => {
     setSegmented(els.inversionMode, button.dataset.value);
-    await setView({ inversion: button.dataset.value, invert: button.dataset.value !== "off" });
-    els.invert.checked = button.dataset.value !== "off";
+    await setView({ inversion: button.dataset.value, invert: true });
+    els.invert.checked = true;
+    await refresh();
   });
 });
 

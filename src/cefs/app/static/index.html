@@ -57,7 +57,6 @@
           <div class="segmented" id="inversion-mode">
             <button data-value="film">Film</button>
             <button data-value="linear">Linear</button>
-            <button data-value="off">Off</button>
           </div>
         </label>
         <p class="note">
@@ -65,8 +64,10 @@
           divides out the orange mask and inverts density properly.
           <strong>Linear</strong> is the old v0.1 flip, kept so you can see the
           difference &mdash; on colour negatives it comes out cyan.
+          Untick <em>Invert to positive</em> to see the negative itself.
         </p>
 
+        <div id="film-controls">
         <button id="sample-base">Sample film base from loupe area</button>
         <p class="note" id="base-note">
           Put the loupe over the <em>rebate</em> &mdash; the clear unexposed border
@@ -84,6 +85,8 @@
           <input type="range" id="film-contrast" min="0.6" max="3" step="0.05" value="1.65">
         </label>
         <button id="film-reset">Reset inversion settings</button>
+        </div>
+        <p class="note warn" id="film-disabled-note" hidden></p>
 
         <p class="note">
           This affects the <em>preview only</em>. The captured file is always saved
@@ -142,9 +145,10 @@
             <kbd>Shift</kbd> medium &middot; <kbd>Alt</kbd> coarse
           </p>
           <p class="note">
-            Each press sends several steps. One SDK step moves an RF macro lens
-            by less than the sensor noise, so a single-step control would feel
-            like nothing was happening.
+            <strong>Fine</strong> is a single step of the SDK's smallest size
+            &mdash; the finest move EDSDK offers, so nothing below it exists.
+            Medium and coarse send several steps, because on an RF macro lens
+            one step is far too small to see without the loupe.
           </p>
         </div>
         <div id="focus-unavailable" class="warn" hidden>
