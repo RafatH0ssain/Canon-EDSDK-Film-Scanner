@@ -95,8 +95,11 @@ kEdsEvfOutputDevice_TFT = 1
 kEdsEvfOutputDevice_PC = 2
 
 kEdsCameraCommand_DriveLensEvf = 0x00000103
-kEdsEvfDriveLens_Near1 = 0x00000001
-kEdsEvfDriveLens_Far1 = 0x00008001
+# Three step sizes in each direction, 1 finest and 3 coarsest. A fine step on a
+# long macro lens can be smaller than the frame noise, so a "did it move?" test
+# needs the coarse one to be conclusive.
+_DRIVE_NEAR = {1: 0x00000001, 2: 0x00000002, 3: 0x00000003}
+_DRIVE_FAR = {1: 0x00008001, 2: 0x00008002, 3: 0x00008003}
 
 # COM / message-pump constants from the Windows SDK, not Canon's.
 COINIT_APARTMENTTHREADED = 0x2
@@ -220,11 +223,14 @@ def pump_messages() -> None:
 class Spike:
     """Runs the whole v0.0 measurement on one STA thread."""
 
-    def __init__(self, dll_dir: Path, seconds: float, warmup: int, focus_test: bool) -> None:
+    def __init__(
+        self, dll_dir: Path, seconds: float, warmup: int, focus_test: bool, focus_step: int = 1
+    ) -> None:
         self.dll_dir = dll_dir
         self.seconds = seconds
         self.warmup = warmup
         self.focus_test = focus_test
+        self.focus_step = focus_step
         self.result: dict | None = None
         self.error: BaseException | None = None
 
@@ -402,18 +408,81 @@ class Spike:
                 print(f"  warning: could not restore live view: {exc}")
 
     def _focus_check(self, dll, camera) -> dict:
-        """Drive focus one step near, then one step back, and report.
+        """Drive focus one step near, then one step back, and prove it moved.
 
         Only runs with --focus-test. It moves an autofocus lens; a manual lens
-        will simply report NOT_SUPPORTED, which is a useful answer in itself.
+        will report NOT_SUPPORTED, which is a useful answer in itself.
+
+        A return code of OK only means the SDK accepted the command. To show
+        the lens actually moved, the frame is compared before and after against
+        a noise floor measured from two untouched consecutive frames. Without
+        that floor a difference is meaningless -- live view frames never repeat
+        exactly, so any two of them differ somewhat.
         """
-        print("  focus test: driving one step near, then one step far ...")
+        import cv2
+        import numpy as np
+
+        def sample():
+            """Newest decodable frame as greyscale, or None."""
+            deadline = time.perf_counter() + 3.0
+            while time.perf_counter() < deadline:
+                pump_messages()
+                data, _ = self._grab_frame(dll, camera)
+                if data:
+                    image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
+                    if image is not None:
+                        return image
+                time.sleep(0.005)
+            return None
+
+        def settle(frames=15):
+            """Discard frames so the lens has moved and stale ones are flushed."""
+            time.sleep(0.5)
+            for _ in range(frames):
+                pump_messages()
+                self._grab_frame(dll, camera)
+
+        def difference(a, b) -> float:
+            return float(np.mean(np.abs(a.astype(np.float32) - b.astype(np.float32))))
+
+        def sharpness(image) -> float:
+            # Tenengrad. The sibling project found variance-of-Laplacian
+            # separated sharp from soft by only 1.22x on real frames.
+            gx = cv2.Sobel(image, cv2.CV_32F, 1, 0, ksize=3)
+            gy = cv2.Sobel(image, cv2.CV_32F, 0, 1, ksize=3)
+            return float(np.mean(gx * gx + gy * gy))
+
+        print("  focus test: measuring frame noise floor ...")
         out: dict = {}
-        for label, value in (("near1", kEdsEvfDriveLens_Near1), ("far1", kEdsEvfDriveLens_Far1)):
-            code = dll.EdsSendCommand(camera, kEdsCameraCommand_DriveLensEvf, value)
-            out[label] = _ERROR_NAMES.get(code, f"0x{code:08X}")
-            time.sleep(0.6)
+
+        floor = 0.0
+        base = sample()
+        if base is None:
+            return {"error": "no frame available for the focus test"}
+        for _ in range(3):
             pump_messages()
+            other = sample()
+            if other is not None:
+                floor = max(floor, difference(base, other))
+        out["noise_floor"] = floor
+        out["sharpness_before"] = sharpness(base)
+
+        step = self.focus_step
+        print(f"  focus test: driving one step near, then one step far (size {step}) ...")
+        for label, value in ((f"near{step}", _DRIVE_NEAR[step]), (f"far{step}", _DRIVE_FAR[step])):
+            code = dll.EdsSendCommand(camera, kEdsCameraCommand_DriveLensEvf, value)
+            out[f"{label}_code"] = _ERROR_NAMES.get(code, f"0x{code:08X}")
+            settle()
+            after = sample()
+            if after is None:
+                out[f"{label}_moved"] = None
+                continue
+            out[f"{label}_diff"] = difference(base, after)
+            out[f"{label}_sharpness"] = sharpness(after)
+            # Comfortably clear of the floor, not merely above it.
+            out[f"{label}_moved"] = out[f"{label}_diff"] > max(floor * 3.0, 1.0)
+            base = after
+
         return out
 
 
@@ -480,16 +549,36 @@ def report(data: dict, seconds: float) -> bool:
     # the first second is not a number worth building on.
     print("\n  STABILITY (fps per 5 s window)")
     t0 = data["timestamps"][0]
+    span = data["timestamps"][-1] - t0
     windows: dict[int, int] = {}
     for t in data["timestamps"]:
         windows[int((t - t0) // 5)] = windows.get(int((t - t0) // 5), 0) + 1
     for index in sorted(windows):
-        print(f"    {index * 5:>3}-{index * 5 + 5:<3}s : {windows[index] / 5.0:.2f} fps")
+        # A trailing partial window must be divided by its real duration, or a
+        # short run reports a fps far below what it actually achieved.
+        duration = min(5.0, span - index * 5) or 5.0
+        print(f"    {index * 5:>3}-{index * 5 + 5:<3}s : {windows[index] / duration:.2f} fps")
 
-    if data["focus"]:
+    focus = data["focus"]
+    if focus:
         print("\n  FOCUS TEST")
-        for step, outcome in data["focus"].items():
-            print(f"    drive {step:<6}: {outcome}")
+        if "error" in focus:
+            print(f"    {focus['error']}")
+        else:
+            print(f"    frame noise floor    : {focus['noise_floor']:.2f} (two untouched frames)")
+            print(f"    sharpness before     : {focus['sharpness_before']:.0f}")
+            steps = [k[:-6] for k in focus if k.endswith("_moved")]
+            for step in steps:
+                moved = focus.get(f"{step}_moved")
+                if moved is None:
+                    print(f"    drive {step:<6}: {focus.get(f'{step}_code')}, no frame to compare")
+                    continue
+                verdict = "frame CHANGED" if moved else "frame unchanged -- lens did NOT move"
+                print(
+                    f"    drive {step:<6}: {focus[f'{step}_code']}, "
+                    f"diff {focus[f'{step}_diff']:.2f}, "
+                    f"sharpness {focus[f'{step}_sharpness']:.0f}  -> {verdict}"
+                )
 
     print("\n" + "-" * 68)
     print("  GATE  (ROADMAP.md section 8, v0.0)")
@@ -525,6 +614,13 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Also drive focus one step near and back. Moves an autofocus lens.",
     )
+    parser.add_argument(
+        "--focus-step",
+        type=int,
+        choices=(1, 2, 3),
+        default=1,
+        help="Focus step size: 1 finest, 3 coarsest. Use 3 to test whether it moves at all.",
+    )
     args = parser.parse_args(argv)
 
     if sys.platform != "win32":
@@ -540,7 +636,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  dll dir : {dll_dir}")
     print("  this will NOT fire the shutter\n")
 
-    spike = Spike(dll_dir, args.seconds, args.warmup, args.focus_test)
+    spike = Spike(dll_dir, args.seconds, args.warmup, args.focus_test, args.focus_step)
 
     # The SDK is initialised, used and torn down entirely on this one thread.
     thread = threading.Thread(target=spike.run, name="camera", daemon=True)
