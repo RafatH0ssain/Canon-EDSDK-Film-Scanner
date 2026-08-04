@@ -53,6 +53,14 @@ rolls/
 *.CR3
 *.cr2
 *.cr3
+# HEIF: what an EOS R7 writes when image quality is set to HEIF rather than
+# RAW or JPEG. Easy to miss, and just as much a personal scan as a .CR3.
+*.HIF
+*.hif
+*.HEIF
+*.heif
+*.HEIC
+*.heic
 *.tif
 *.tiff
 *.jpg

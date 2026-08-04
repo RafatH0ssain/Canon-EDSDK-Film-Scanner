@@ -21,6 +21,7 @@ import threading
 import time
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from cefs.backend import Capabilities, CameraError, CameraInfo
@@ -58,9 +59,12 @@ class MockCamera:
         self._running = False
         self._thread: threading.Thread | None = None
         self._frame: bytes | None = None
-        self._phase = 0.0
         self._focus_error = float(np.clip(focus_error, 0.0, _FOCUS_RANGE))
         self._shots = 0
+        self._render_base: np.ndarray | None = None
+        self._render_key: tuple | None = None
+        self._noise_bank: list[np.ndarray] = []
+        self._noise_index = 0
 
         self._info = CameraInfo(model="Mock EOS (no camera)", backend="mock", lens="Mock 85mm Macro")
         self._capabilities = Capabilities(
@@ -141,24 +145,58 @@ class MockCamera:
 
     # --- the frame generator ------------------------------------------------
 
+    def _render(self, focus_error: float) -> np.ndarray:
+        """The scene without grain, re-rendered only when focus changes.
+
+        Rendering a synthetic negative costs ~110 ms, which would cap the mock
+        near 9 fps against a real camera's 60. A mock that slow is not merely
+        inconvenient: it invites tuning the stream loop against timings that do
+        not exist on hardware.
+
+        The scene is deliberately static, which is also what a negative on a
+        copy stand actually is. Only grain changes frame to frame -- enough to
+        show the stream is live, and true to the subject.
+        """
+        key = round(focus_error, 2)
+        if self._render_key != key:
+            self._render_base = make_negative(
+                width=self._width,
+                height=self._height,
+                color=self._color,
+                phase=0.0,
+                focus_error=focus_error,
+                grain=0.0,
+                seed=self._seed,
+            )
+            self._render_key = key
+        return self._render_base
+
+    def _grain_field(self) -> np.ndarray:
+        """One of a few precomputed noise fields, cycled.
+
+        Drawing 1.8 M fresh normals per frame costs ~32 ms. Cycling a small bank
+        looks live and costs nothing.
+        """
+        if not self._noise_bank:
+            rng = np.random.default_rng(self._seed)
+            shape = (self._height, self._width, 3)
+            self._noise_bank = [
+                rng.normal(0.0, 5.0, shape).astype(np.int16) for _ in range(6)
+            ]
+        self._noise_index = (self._noise_index + 1) % len(self._noise_bank)
+        return self._noise_bank[self._noise_index]
+
     def _run(self) -> None:
         while self._running:
             started = time.perf_counter()
             with self._lock:
-                phase = self._phase
                 focus_error = self._focus_error
-            frame = make_negative(
-                width=self._width,
-                height=self._height,
-                color=self._color,
-                phase=phase,
-                focus_error=focus_error,
-                seed=self._seed,
+            frame = cv2.add(
+                self._render(focus_error), self._grain_field(), dtype=cv2.CV_8U
             )
             data = encode_jpeg(frame)
             with self._lock:
                 self._frame = data
-                self._phase += 0.08
             elapsed = time.perf_counter() - started
             time.sleep(max(0.0, self._interval - elapsed))
 

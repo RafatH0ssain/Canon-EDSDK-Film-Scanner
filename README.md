@@ -4,7 +4,9 @@ Digitize film negatives with a Canon camera on a copy stand — focusing, framin
 
 Built on [EDSDK](https://developercommunity.usa.canon.com/), Canon's EOS Digital SDK. Works with black-and-white **and** colour negatives.
 
-> **Status: v0.0 passed.** The premise is measured and confirmed — **59.79 fps / 17 ms at 960×640** over USB on an EOS R7, against 3.98 fps / 251 ms for the same frame size over Wi-Fi. That is 15× the frame rate at identical resolution. Details in [spike/README.md](spike/README.md). The app itself is not built yet; v0.1 is next.
+> **Status: v0.1 works on real hardware.** Live view, a focus loupe, remote capture with a settle delay, and a positive preview — all verified on an EOS R7. The premise that justified the project is measured and confirmed: **59.79 fps / 17 ms at 960×640** over USB, against 3.98 fps / 251 ms for the same frame size over Wi-Fi. Details in [spike/README.md](spike/README.md).
+>
+> Colour negatives still preview cyan (v0.3), and focus stepping, peaking and the sharpness readout are not in the UI yet (v0.2). See [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -54,7 +56,7 @@ It is also **not wireless**. If you need to shoot untethered, use the CCAPI proj
 1. **Register** with [Canon's Developer Community](https://developercommunity.usa.canon.com/) for your region and request EDSDK access. Approval is not instant.
 2. **Check your camera is supported** on the download page before going further — Canon does not publish the compatibility list openly.
 3. **Download and unpack the SDK.** Keep it *outside* this repository, or in `edsdk_sdk/`, which is git-ignored.
-4. **Point the app at it** via a git-ignored config file (once that exists).
+4. **Point the app at it** by setting `edsdk.library_dir` in `config.yaml`, which is git-ignored. Use the **64-bit** libraries with 64-bit Python; mixing bitness fails at load time with an error that never mentions bitness.
 
 Never commit the headers, the DLLs, or the reference manual. Never paste Canon's reference text into an issue or a PR — the function names and constants you use in code are fine, Canon's prose is not.
 
@@ -67,19 +69,72 @@ Never commit the headers, the DLLs, or the reference manual. Never paste Canon's
 **Autofocus lens:** focus can be driven from the PC.
 **Manual lens:** you focus by hand, but keep the magnified view, the focus aids, and the remote shutter. The app detects which case applies.
 
-## Planned project layout
+## Running it
+
+**With no SDK and no camera** — the default in a fresh clone:
+
+```bash
+python -m venv .venv                      # Python 3.10-3.13, 64-bit
+.venv/Scripts/pip install -r requirements.txt -e .
+.venv/Scripts/python -m cefs.app.server
+```
+
+Open <http://127.0.0.1:8000/> and press Connect. You get a synthetic film
+negative with grain, an orange mask and a rebate — enough to develop against.
+
+**With a real camera:**
+
+1. Copy `config.example.yaml` to `config.yaml`.
+2. Set `edsdk.library_dir` to the folder holding your 64-bit `EDSDK.dll`.
+3. Set `camera.use_mock: false`.
+4. Check the camera first, without firing anything:
+   ```bash
+   .venv/Scripts/python -m cefs.tools.check_camera --focus
+   ```
+   This reports the body, lens, capabilities and live-view rate, and confirms
+   focus drive actually moves the image. Add `--capture` to fire one test shot.
+5. `.venv/Scripts/python -m cefs.app.server`
+
+The server binds to loopback. Do not expose it to a network you do not
+control — it can fire your shutter.
+
+### Measured on an EOS R7
+
+| | |
+|---|---|
+| Live view | 960×640, ~60 fps available, 30 fps default |
+| Capture download | ~10 MB/s (a 14.6 MB HEIF in ~1.4 s) |
+| Focus drive | works, but one step is below the frame noise — steps must accumulate |
+| Camera-side live-view zoom | **not available** over EDSDK; the software loupe is the only magnification |
+| Electronic shutter | **not selectable** over EDSDK — set Shutter mode in the camera menu |
+
+## Honest limitations
+
+- **Colour negatives preview cyan.** v0.1 inversion is a plain linear flip,
+  which is fine for black & white but leaves colour film with the inverse of
+  its orange mask. Doing it properly is v0.3 and needs a real pipeline.
+- **The preview is inverted; the saved file is not.** Captures are always kept
+  exactly as the camera wrote them. Inverting captured files is v0.3.
+- **No focus stepping, peaking or sharpness readout in the UI yet.** The
+  processing for the latter two is present and tested; wiring is v0.2.
+- **Windows only so far.** The message pump is platform-specific and isolated,
+  so macOS and Linux remain possible, but neither is done.
+
+## Project layout
 
 ```
 src/cefs/
+├── backend.py       The contract both backends implement
+├── config.py        Defaults, then config.yaml, then CEFS_* env vars
 ├── edsdk/           ctypes bindings + the camera thread. Native, Windows-first.
 │   ├── bindings.py      The ONLY place SDK signatures and constants live
 │   ├── camera.py        Camera thread: STA, message pump, command queue
-│   ├── liveview.py      Frame pump
 │   └── errors.py        SDK error codes -> messages that name the real cause
 ├── processing/      Pure functions over numpy arrays. No SDK, no UI.
 ├── app/             Local web server + browser UI
-└── mock/            A fake backend, so development needs no SDK and no camera
-tests/               Runs without a camera
+├── mock/            A fake backend, so development needs no SDK and no camera
+└── tools/           Diagnostics: check_camera reports what a body supports
+tests/               64 tests, all runnable with no camera and no SDK
 ```
 
 The layering matters: it is what lets the colour-inversion work happen with no hardware attached, and it is why roughly half of the sibling project can be ported straight across.
