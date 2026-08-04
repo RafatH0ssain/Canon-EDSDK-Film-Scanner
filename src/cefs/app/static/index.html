@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Canon EDSDK Film Scanner</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Canon EDSDK Film Scanner</h1>
+    <div class="status" id="status-chip" data-state="off">Disconnected</div>
+    <button id="connect" class="primary">Connect</button>
+  </header>
+
+  <main>
+    <section class="viewer" id="viewer">
+      <img id="preview" alt="Live view from the camera" hidden>
+      <div class="placeholder" id="placeholder">
+        <p>Not connected.</p>
+        <p class="hint">
+          Running against the <strong>mock camera</strong> by default &mdash; no SDK
+          or hardware needed. For a real body, set <code>camera.use_mock: false</code>
+          and <code>edsdk.library_dir</code> in <code>config.yaml</code>, then press
+          Connect.
+        </p>
+      </div>
+      <div class="loupe-hint" id="loupe-hint" hidden>Click the image to move the loupe</div>
+    </section>
+
+    <aside class="panel">
+      <div class="group">
+        <h2>Camera</h2>
+        <dl class="facts">
+          <dt>Body</dt><dd id="model">&mdash;</dd>
+          <dt>Lens</dt><dd id="lens">&mdash;</dd>
+        </dl>
+      </div>
+
+      <div class="group">
+        <h2>Preview</h2>
+        <label class="row">
+          <input type="checkbox" id="invert" checked>
+          <span>Invert to positive <kbd>I</kbd></span>
+        </label>
+        <p class="note">
+          v0.1 uses a plain linear inversion. Fine for black &amp; white; colour
+          negatives will look cyan until the real colour pipeline lands in v0.3.
+          This affects the <em>preview only</em> &mdash; the captured file is always
+          saved untouched.
+        </p>
+      </div>
+
+      <div class="group">
+        <h2>Focus loupe</h2>
+        <label class="row">
+          <input type="checkbox" id="loupe">
+          <span>Magnified loupe <kbd>L</kbd></span>
+        </label>
+        <label class="row stacked">
+          <span>Zoom <output id="zoom-value">4.0&times;</output></span>
+          <input type="range" id="zoom" min="1" max="12" step="0.5" value="4">
+        </label>
+        <p class="note" id="loupe-note">
+          Click anywhere on the image to move the loupe. This enlarges pixels the
+          camera already discarded when it downscaled the live-view stream.
+        </p>
+      </div>
+
+      <div class="group">
+        <h2>Capture</h2>
+        <button id="capture" class="primary big" disabled>
+          Capture <kbd>Space</kbd>
+        </button>
+        <dl class="facts">
+          <dt>Settle delay</dt><dd id="settle">&mdash;</dd>
+          <dt>Shutter</dt><dd id="shutter-mode">&mdash;</dd>
+          <dt>Saving to</dt><dd id="output-dir" class="path">&mdash;</dd>
+        </dl>
+        <div id="capture-status" class="capture-status" hidden></div>
+      </div>
+
+      <div class="group">
+        <h2>Downloaded</h2>
+        <ul class="captures" id="captures"><li class="empty">Nothing yet.</li></ul>
+      </div>
+
+      <div class="group">
+        <h2>Not in this version</h2>
+        <p class="note">
+          Focus stepping, peaking and the sharpness readout are v0.2. Proper
+          black &amp; white and colour inversion is v0.3. See
+          <code>ROADMAP.md</code>.
+        </p>
+      </div>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

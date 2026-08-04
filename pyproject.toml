@@ -43,4 +43,9 @@ where = ["src"]
 testpaths = ["tests"]
 # Quiet, readable output by default; add -v when you are debugging one test.
 addopts = "-q"
-filterwarnings = ["error::DeprecationWarning:cefs.*"]
+filterwarnings = [
+    "error::DeprecationWarning:cefs.*",
+    # Starlette's TestClient warns that it wants httpx2. Not our call to make,
+    # and not worth adding a dependency over.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:DeprecationWarning",
+]
