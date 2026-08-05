@@ -1,43 +1,17 @@
 """The only place EDSDK ctypes signatures and constants live.
 
-Everything the project assumes about Canon's native API is quarantined here, so
-correcting a wrong assumption touches one file. That is a lesson from the
-sibling CCAPI project, where an invented request shape had spread through the
-code and its mock before anyone read the real documentation.
+Quarantined here so a wrong assumption is corrected in one file. Two rules:
 
-Two rules this file exists to enforce:
+**Never guess a signature** -- every declaration was read from the headers in
+the user's own SDK copy, and a wrong one corrupts the stack, crashing somewhere
+unrelated. **Always declare argtypes and restype**, or ctypes guesses the
+marshalling from whatever Python values it is handed, which works until it
+does not.
 
-**Never guess a signature.** Every declaration below was read from the headers
-in the user's own SDK copy. A wrong ``ctypes`` signature corrupts the stack, and
-the resulting crash points somewhere unrelated to the mistake.
-
-**Always declare argtypes and restype.** Without them ctypes guesses argument
-marshalling from the Python values it is handed, which works until the day it
-does not. This is the single most common cause of native crashes that look like
-they came from elsewhere.
-
-Nothing Canon-owned is reproduced here: only function names, constant names and
-their numeric values, which are the parts that must appear in any code calling
-the SDK.
-
-Type mapping, from EDSDKTypes.h on Windows:
-
-===================  ==================  ==========================
-EDSDK type           C type              ctypes
-===================  ==================  ==========================
-``EdsError``         ``unsigned long``   ``c_uint32``
-``EdsUInt32``        ``unsigned long``   ``c_uint32``
-``EdsInt32``         ``long``            ``c_int32``
-``EdsUInt64``        ``unsigned __int64````c_uint64``
-``EdsBool``          ``int``             ``c_int32``
-``EdsChar``          ``char``            ``c_char``
-``EdsBaseRef``       ``struct __EdsObject*``  ``c_void_p``
-===================  ==================  ==========================
-
-``EdsBaseRef`` and every ``Eds*Ref`` alias are the same opaque pointer, so they
-are all ``c_void_p``. The calling convention is ``__stdcall``, which on x64
-Windows is the one and only convention, making ``WinDLL`` and ``CDLL``
-equivalent there; ``WinDLL`` is used because it is what the header declares.
+Nothing Canon-owned is reproduced: only names and numeric values, which any
+code calling the SDK must contain. ``EdsError``/``EdsUInt32`` are ``c_uint32``,
+``EdsInt32``/``EdsBool`` are ``c_int32``, and every ``Eds*Ref`` is the same
+opaque ``c_void_p``.
 """
 
 from __future__ import annotations

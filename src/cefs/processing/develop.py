@@ -1,33 +1,21 @@
 """Turn a captured negative into a positive file.
 
-The same inversion the live preview uses, applied to what the camera actually
-wrote. Non-destructive: the original is never touched or overwritten, and the
-positive is written alongside it with a ``-positive`` suffix.
+The preview's inversion, applied to what the camera wrote. Non-destructive: the
+original is never touched, and the positive lands beside it with a
+``-positive`` suffix. The decoder is chosen by the file, not by a setting:
 
-Which decoder is used depends on the file, not on a setting:
+- **RAW** via LibRaw, because EDSDK cannot decode CR3 (measured -- see
+  :mod:`cefs.edsdk.decode`). CRAW needs nothing extra: it is a compression mode
+  inside the same container. 16-bit linear in, 16-bit TIFF out.
+- **HEIF** via pillow-heif at its full 10 bits. Canon writes HEIF only in HDR
+  PQ mode, so the samples are PQ, not sRGB -- read from the file's NCLX profile
+  rather than assumed. Out as a 16-bit TIFF.
+- **JPEG** via OpenCV; 8-bit and already tone-mapped, so it is a proof.
 
-- **RAW** (``.CR3``/``.CR2``, and so CRAW too -- Canon's compressed RAW is a
-  variant *inside* the CR3 container, which LibRaw handles with no separate
-  code here) goes through :mod:`cefs.processing.raw`, because EDSDK will not
-  decode CR3 -- measured, see :mod:`cefs.edsdk.decode`. It arrives 16-bit and
-  linear, which is what the inversion wants, and leaves as a 16-bit TIFF.
-- **HEIF** (``.HIF``/``.heif``/``.heic``) goes through pillow-heif at its full
-  10-bit depth. A Canon body writes HEIF only in HDR PQ mode, so the samples
-  are PQ-encoded, not sRGB -- the file's own NCLX profile says which, and it is
-  read rather than assumed. PQ files take the 16-bit path and leave as a 16-bit
-  TIFF; anything else is treated as 8-bit sRGB.
-
-  Do not expect a HEIF and a RAW of the same frame to develop identically. A
-  HEIF is *rendered* in the camera -- picture style and all -- where a RAW is
-  the sensor's own linear data. Measured on one frame shot both ways on an R7,
-  the two positives agree closely on overall level (mean 0.455 against 0.445)
-  and the HEIF comes out with about a quarter more tonal spread (std 0.292
-  against 0.237), which is consistent with the camera's tone curve already
-  being baked into it. RAW remains the better master; HEIF is a good deal more
-  than a proof.
-- **JPEG** is read with OpenCV. It is 8-bit and already tone-mapped, so the
-  result cannot match a RAW development; it is written back as a high-quality
-  JPEG and is best treated as a proof.
+A HEIF and a RAW of the same frame do not develop identically: a HEIF is
+rendered in-camera where a RAW is sensor-linear. Measured on one frame shot both
+ways, the positives agree on level (mean 0.455 vs 0.445) but the HEIF carries
+~25% more tonal spread (std 0.292 vs 0.237). RAW is still the better master.
 """
 
 from __future__ import annotations
@@ -60,29 +48,13 @@ _DIRECT_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 #: What a Canon body calls HEIF, plus the names everything else uses.
 HEIF_EXTENSIONS = {".hif", ".heif", ".heic"}
 
-#: libtiff compression codes, as ``cv2.IMWRITE_TIFF_COMPRESSION`` wants them.
-#: All three are lossless -- verified by reading each back and comparing every
-#: pixel, not assumed from the format.
-#:
-#: Measured on two real 32 MP positives off an R7, one developed from HEIF and
-#: one from the CR3 of the same frame:
-#:
-#: ========  ==================  ==============  ========
-#: mode      size                ratio           write
-#: ========  ==================  ==============  ========
-#: none      193.8 / 195.3 MB    1.00x           0.15 s
-#: lzw       161.6 / 177.6 MB    1.10-1.20x      2.3 s
-#: deflate   74.1 / 80.9 MB      2.41-2.61x      5 s
-#: ========  ==================  ==============  ========
-#:
-#: Deflate is the default, and the numbers are why. LZW barely compresses
-#: 16-bit continuous tone, and its ratio swings with the frame -- another
-#: negative came out at 1.9x -- where deflate stays near 2.5x. LZW is also what
-#: OpenCV writes when given no compression parameter at all, so choosing it
-#: explicitly would have changed nothing about the files this program produces.
+#: libtiff codes for ``cv2.IMWRITE_TIFF_COMPRESSION``. All lossless -- verified
+#: by reading back and comparing every pixel. Measured on two real 32 MP
+#: positives: none 194 MB / 0.15 s, lzw 162-178 MB (1.1-1.2x) / 2.3 s, deflate
+#: 74-81 MB (2.4-2.6x) / 5 s. Deflate is the default because LZW barely touches
+#: 16-bit continuous tone -- and is what OpenCV writes anyway when told nothing.
 TIFF_COMPRESSION = {"none": 1, "lzw": 5, "deflate": 8}
 
-#: How the positive is chosen when the format is left on "auto".
 POSITIVE_FORMATS = ("auto", "tiff", "jpeg")
 
 
@@ -124,12 +96,8 @@ def is_heif(path: Path | str) -> bool:
 
 
 def _keeps_16_bits(source: Path) -> bool:
-    """Whether this source carries more than 8 bits worth preserving.
-
-    Decided from the extension, because the destination has to be chosen before
-    the file is decoded. A HEIF that turns out to be 8-bit sRGB therefore lands
-    in an 8-bit TIFF -- larger than it needs to be, but never a lie about depth.
-    """
+    """From the extension, since the destination is chosen before decoding. An
+    8-bit HEIF therefore lands in an 8-bit TIFF -- wasteful, never a lie."""
     return is_raw(source) or is_heif(source)
 
 
@@ -139,11 +107,7 @@ def positive_path(
     suffix: str = "-positive",
     output: OutputOptions | None = None,
 ) -> Path:
-    """Where the positive for ``source`` should be written.
-
-    16-bit TIFF for RAW and HEIF so the extra depth survives; JPEG for
-    everything else, which was 8-bit to begin with.
-    """
+    """Where the positive goes: TIFF for RAW and HEIF, JPEG for the rest."""
     output = output or OutputOptions()
     if output.format == "tiff":
         extension = ".tif"
@@ -163,15 +127,8 @@ def positive_path(
 
 
 def _read_heif(source: Path) -> tuple[np.ndarray, bool]:
-    """Decode a HEIF file at its native depth.
-
-    Returns:
-        ``(rgb, is_pq)``. ``rgb`` is uint16 with 10-bit codes left-shifted into
-        16 bits when the file is PQ, and uint8 sRGB otherwise.
-
-    Raises:
-        DevelopError: If pillow-heif is missing or the file will not decode.
-    """
+    """Decode a HEIF at native depth. Returns ``(rgb, is_pq)`` -- uint16 PQ
+    codes, or uint8 sRGB."""
     try:
         import pillow_heif
     except ImportError as exc:  # pragma: no cover - depends on the environment
@@ -182,9 +139,8 @@ def _read_heif(source: Path) -> tuple[np.ndarray, bool]:
         ) from exc
 
     try:
-        # HDR is kept: converting to 8 bits here would throw away two of the
-        # camera's ten bits before the inversion, which is the one step that
-        # stretches the range hard enough to need them.
+        # Keep HDR: dropping to 8 bits here would discard two of the camera's
+        # ten before the one step that stretches the range hard enough to need them.
         heif = pillow_heif.open_heif(str(source), convert_hdr_to_8bit=False)
         rgb = np.asarray(heif)
     except Exception as exc:  # pillow-heif raises several unrelated types
@@ -194,9 +150,8 @@ def _read_heif(source: Path) -> tuple[np.ndarray, bool]:
         raise DevelopError(f"{source.name} is not a 3-channel image ({rgb.shape}).")
     rgb = rgb[:, :, :3]  # drop alpha if the file has one
 
-    # Transfer characteristic 16 is SMPTE ST 2084 (PQ). Read from the file
-    # rather than inferred from the depth: an 8-bit sRGB HEIF exists and must
-    # not be run through the PQ curve, which would wreck it.
+    # 16 is SMPTE ST 2084 (PQ). Read, not inferred from depth: an 8-bit sRGB
+    # HEIF exists and running it through the PQ curve would wreck it.
     nclx = heif.info.get("nclx_profile") or {}
     is_pq = nclx.get("transfer_characteristics") == 16
 
@@ -205,8 +160,8 @@ def _read_heif(source: Path) -> tuple[np.ndarray, bool]:
             f"{source.name} declares PQ but decoded as {rgb.dtype}, not 16-bit."
         )
     if not is_pq and rgb.dtype == np.uint16:
-        # Non-PQ and deep: no transfer function we can name, so drop to 8-bit
-        # sRGB rather than guess one.
+        # Deep but not PQ: no transfer we can name, so drop to 8 bits rather
+        # than guess one.
         logger.warning(
             "%s is %s-bit but not PQ (transfer=%s); treating it as 8-bit sRGB.",
             source.name,
@@ -215,28 +170,20 @@ def _read_heif(source: Path) -> tuple[np.ndarray, bool]:
         )
         rgb = (rgb >> 8).astype(np.uint8)
 
-    # Copy, deliberately. ``np.asarray`` on a HeifFile is a *view* into
-    # libheif's own buffer, which is freed with the HeifFile at the end of this
-    # function -- and reading it afterwards is not an exception but an access
-    # violation that takes the whole process down with no traceback.
+    # Copy, deliberately: np.asarray on a HeifFile is a view into libheif's
+    # buffer, freed with it, and touching it later is an access violation that
+    # kills the process with no traceback.
     return np.array(rgb, copy=True, order="C"), is_pq
 
 
 def _measure(linear: np.ndarray, params: FilmParams, base_region) -> dict:
-    """Measure the film base from the captured file, never from the preview.
+    """Measure the base from the file, never from the preview.
 
-    The base is a linear value, and "linear" is not one scale. A live-view
-    frame is sRGB-linear where 1.0 is display white; a CR3 is sensor-linear
-    where 1.0 is saturation; a PQ HEIF is absolute, where 1.0 is 10000 cd/m^2
-    and a negative on a light table sits near 0.02. Carrying a number sampled
-    in one of those into another is comparing a rebate against nothing in
-    particular. Measured on a real .HIF, a preview-sampled base collapsed the
-    positive's tonal spread from 0.300 to 0.111 standard deviations and left
-    nothing outside 0.32-0.74 -- flat, and plausible enough to keep.
-
-    So what travels from the preview is the *region* the user pointed at, in
-    normalised coordinates. The framing is the same, so the same rebate is
-    re-measured here in the file's own scale, and at full resolution.
+    "Linear" is not one scale: live view is sRGB-linear (1.0 = display white),
+    a CR3 sensor-linear (1.0 = saturation), a PQ HEIF absolute (a negative sits
+    near 0.02). Carrying a value across collapsed a real .HIF's positive from
+    std 0.300 to 0.111. So the *region* travels instead, and the same rebate is
+    re-measured here in the file's own scale.
     """
     if base_region is not None:
         params = params.replace(base=sample_base(linear, region=tuple(base_region)))
@@ -304,22 +251,9 @@ def develop(
 ) -> Path:
     """Invert a captured negative and write the positive beside it.
 
-    Args:
-        source: The captured file, exactly as the camera wrote it.
-        params: The same :class:`~cefs.processing.film.FilmParams` the preview
-            uses, so what you judged on screen is what you get. Its ``base`` is
-            deliberately *not* used -- see :func:`_measure`.
-        output_dir: Where to write. Defaults to the source's own directory.
-        output: Container, compression and quality. See :class:`OutputOptions`.
-        base_region: Where the user pointed at the rebate, ``(x, y, w, h)`` in
-            normalised coordinates. Re-measured from this file rather than
-            carried over as a value. ``None`` estimates the base automatically.
-
-    Returns:
-        Path to the positive that was written.
-
-    Raises:
-        DevelopError: If the file cannot be read or written.
+    ``params`` is what the preview used, so the file matches the screen -- but
+    its ``base`` is ignored in favour of ``base_region``, the rebate the user
+    pointed at, re-measured here in this file's own scale. See :func:`_measure`.
     """
     source = Path(source)
     output = output or OutputOptions()

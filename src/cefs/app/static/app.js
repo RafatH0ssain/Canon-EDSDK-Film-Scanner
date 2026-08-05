@@ -1,12 +1,8 @@
-/* Canon EDSDK Film Scanner -- v0.1 browser UI.
+/* Browser UI. No framework, no build step: the server does the image work and
+ * hands over an MJPEG stream, and this only sets options and reports state.
  *
- * Deliberately small: no framework, no build step. The server does the image
- * work and hands over an MJPEG stream; this file only sets view options, fires
- * the shutter, and reports state.
- *
- * If a change here seems not to take effect, hard-refresh. Static files reload
- * from disk on every request, but the browser caches them aggressively -- two
- * "bugs" in the sibling project were a stale cached app.js.
+ * If a change seems not to take effect, hard-refresh -- the browser caches this
+ * file hard, and two "bugs" in the sibling project were exactly that.
  */
 
 const $ = (id) => document.getElementById(id);
@@ -123,8 +119,8 @@ function render(status) {
   if (status.capture) renderCaptureSettings(status.capture);
   if (status.roll) renderRoll(status.roll);
 
-  // Report the shutter honestly. EDSDK exposes no shutter-mode property, so
-  // claiming "electronic" here would be asserting something we never set.
+  // EDSDK exposes no shutter-mode property, so claiming "electronic" would
+  // assert something we never set.
   const caps = status.capabilities;
   if (caps && caps.notes && caps.notes.electronic_shutter) {
     els.shutterMode.textContent = "camera menu";
@@ -143,8 +139,7 @@ function render(status) {
     els.peakingValue.textContent = `${Math.round(status.view.peaking_sensitivity * 100)}%`;
   }
 
-  // Focus controls appear only when this lens can actually be driven, and an
-  // absent control explains itself rather than silently vanishing.
+  // Shown only when the lens can be driven, and an absent control says why.
   const canFocus = connected && caps && caps.focus_drive;
   els.focusControls.hidden = !canFocus;
   els.focusUnavailable.hidden = !connected || canFocus;
@@ -174,8 +169,8 @@ function render(status) {
   }
   if (status.view) setSegmented(els.inversionMode, status.view.inversion);
 
-  // Exposure, contrast and the base only feed the film pipeline. Rather than
-  // leaving them looking live but doing nothing, disable them and say why.
+  // These only feed the film pipeline; disable and explain rather than leave
+  // them looking live and doing nothing.
   const filmActive = status.view && status.view.invert && status.view.inversion === "film";
   els.filmControls.querySelectorAll("button, input").forEach((el) => {
     el.disabled = !filmActive;
@@ -210,8 +205,7 @@ function renderRoll(roll) {
   if (idle(els.rollDate)) els.rollDate.value = roll.date || "";
   if (idle(els.rollNotes)) els.rollNotes.value = roll.notes || "";
 
-  // Show what the next frame will actually be called. A template is a rule,
-  // and a rule is harder to check than the answer it produces.
+  // Show the name the next frame gets: easier to check than the template.
   if (roll.template_error) {
     els.rollExample.textContent = roll.template_error;
     els.rollExample.classList.add("bad");
@@ -231,9 +225,8 @@ async function setRoll(changes) {
 }
 
 function renderCaptureSettings(capture) {
-  // Never yank a control out from under the user. A refresh landing mid-drag
-  // or mid-word would rewrite what they are in the middle of setting, so a
-  // focused control keeps whatever it currently shows.
+  // A refresh landing mid-drag or mid-word must not rewrite what is being
+  // typed, so a focused control keeps what it shows.
   const idle = (el) => document.activeElement !== el;
 
   if (idle(els.outputDir)) els.outputDir.value = capture.output_dir || "";
@@ -345,8 +338,8 @@ els.zoom.addEventListener("input", () => {
 });
 
 els.preview.addEventListener("click", (event) => {
-  // Map the click to normalised image coordinates, allowing for letterboxing
-  // from object-fit: contain -- otherwise the loupe jumps on a wide window.
+  // Allow for object-fit: contain letterboxing, or the loupe jumps on a
+  // wide window.
   const box = els.preview.getBoundingClientRect();
   const natural = els.preview.naturalWidth / els.preview.naturalHeight;
   const shown = box.width / box.height;
@@ -456,9 +449,8 @@ els.peakingSensitivity.addEventListener("input", () => {
 // --- focus ------------------------------------------------------------------
 
 async function driveFocus(direction, coarseness) {
-  // Drop presses while one is in flight. Focus commands are paced on the
-  // camera thread, so queueing them up makes the lens keep moving long after
-  // you stop pressing.
+  // Drop presses while one is in flight: commands are paced on the camera
+  // thread, so queueing them keeps the lens moving after you stop pressing.
   if (!connected || focusBusy) return;
   focusBusy = true;
   try {
@@ -558,9 +550,8 @@ els.filmReset.addEventListener("click", async () => {
 });
 
 els.sampleBase.addEventListener("click", async () => {
-  // Sample whatever the loupe is centred on. Its width comes from the zoom, so
-  // a tighter loupe gives a tighter sample -- which is what you want when the
-  // rebate is a narrow strip.
+  // Width comes from the zoom, so a tighter loupe samples tighter -- which is
+  // what you want when the rebate is a narrow strip.
   const half = 0.5 / Math.max(Number(els.zoom.value), 1);
   const cx = Number(els.zoom.dataset.cx ?? 0.5);
   const cy = Number(els.zoom.dataset.cy ?? 0.5);

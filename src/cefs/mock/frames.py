@@ -1,10 +1,10 @@
 """Synthetic film negatives for the mock camera.
 
 These are the fixtures the inversion pipeline is developed against, so they
-model what makes film inversion hard: a film rebate (the unexposed border, and
-the reference v0.3 samples to neutralise the cast), an orange mask across the
-whole colour frame, density inversion, grain, and a compressed density range --
-real negatives never span 0-255, which is why naive inversion looks milky.
+model what makes inversion hard: a rebate (the unexposed border the pipeline
+samples to neutralise the cast), an orange mask, density inversion, grain, and a
+compressed range -- real negatives never span 0-255, which is why a naive
+inversion looks milky.
 """
 
 from __future__ import annotations

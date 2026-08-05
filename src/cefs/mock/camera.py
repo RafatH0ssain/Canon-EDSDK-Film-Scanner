@@ -10,9 +10,9 @@ first, because the mock had been built from the same misunderstanding as the
 code under test. Anything protocol- or performance-shaped must be checked
 against real hardware.
 
-One deliberate piece of realism: focus moves by a small amount per step, so a
-single step is nearly invisible, exactly as on a real RF macro lens. A mock that
-snapped instantly into focus would hide the reason v0.2 has to accumulate steps.
+One deliberate piece of realism: focus moves a small amount per step, so a
+single step is nearly invisible, as on a real RF macro lens. A mock that snapped
+into focus would hide why a keypress has to accumulate steps.
 """
 
 from __future__ import annotations
@@ -66,10 +66,9 @@ class MockCamera:
         self._noise_bank: list[np.ndarray] = []
         self._noise_index = 0
 
-        #: Write two files per shutter release, as a body set to RAW+JPEG does.
-        #: Off by default so the common case stays simple, but available
-        #: because a mock that can only ever write one file cannot catch the
-        #: bug where a frame number advances per *file* instead of per release.
+        #: Two files per release, as RAW+JPEG gives. Off by default, but a mock
+        #: that can only write one file cannot catch a frame number advancing
+        #: per *file* instead of per release.
         self.dual_format = False
 
         self._info = CameraInfo(model="Mock EOS (no camera)", backend="mock", lens="Mock 85mm Macro")
@@ -127,9 +126,8 @@ class MockCamera:
         size = max(1, min(int(size), 3))
         delta = _STEP_SIZES[size] * max(1, int(steps))
         with self._lock:
-            # "near" walks towards sharp, "far" away from it. Which direction is
-            # sharp is arbitrary in a mock; what matters is that it is monotonic
-            # and small per step.
+            # Which direction is sharp is arbitrary; monotonic and small per
+            # step is what matters.
             self._focus_error += -delta if direction == "near" else delta
             self._focus_error = float(np.clip(self._focus_error, 0.0, _FOCUS_RANGE))
 
@@ -159,10 +157,8 @@ class MockCamera:
         written = [destination]
 
         if self.dual_format:
-            # A second file from the same release, as RAW+JPEG produces. PNG
-            # rather than a fake .CR3 so it still decodes -- what is being
-            # modelled is "two files, one shutter release, different
-            # extensions", not the RAW format itself.
+            # PNG rather than a fake .CR3 so it still decodes: what is modelled
+            # is "two files, one release, different extensions".
             sibling = destination.with_suffix(".png")
             cv2.imwrite(str(sibling), frame)
             written.append(sibling)

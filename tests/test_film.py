@@ -1,8 +1,8 @@
-"""v0.3 inversion: the orange mask, tone response, and both film types.
+"""Inversion: the orange mask, tone response, and both film types.
 
 These tests exist because "looks about right" is not a check. A wrong inversion
-still produces a plausible picture -- that is exactly what made the v0.1 linear
-flip acceptable for so long -- so the assertions here are about measurable
+still produces a plausible picture -- which is what made the plain linear flip
+acceptable for so long -- so the assertions here are about measurable
 properties: is the cast gone, is the response monotonic, is black-and-white
 actually neutral.
 """
@@ -49,7 +49,7 @@ def bw_negative() -> np.ndarray:
 
 
 def test_removes_the_orange_mask(colour_negative):
-    """The headline claim of v0.3, stated as a number.
+    """The headline claim, stated as a number.
 
     A linear flip inverts the mask along with the image, which is why an
     un-neutralised colour negative previews cyan.

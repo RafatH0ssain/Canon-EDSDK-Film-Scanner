@@ -62,7 +62,7 @@
         <p class="note">
           <strong>Film</strong> is the real pipeline: it measures the film base,
           divides out the orange mask and inverts density properly.
-          <strong>Linear</strong> is the old v0.1 flip, kept so you can see the
+          <strong>Linear</strong> is the plain flip, kept so you can see the
           difference &mdash; on colour negatives it comes out cyan.
           Untick <em>Invert to positive</em> to see the negative itself.
         </p>
@@ -108,7 +108,7 @@
           <span>Zoom <output id="zoom-value">4.0&times;</output></span>
           <input type="range" id="zoom" min="1" max="12" step="0.5" value="4">
         </label>
-        <p class="note" id="loupe-note">
+        <p class="note">
           Click anywhere on the image to move the loupe. This enlarges pixels the
           camera already discarded when it downscaled the live-view stream.
         </p>
@@ -231,7 +231,7 @@
           <span>Naming template</span>
           <input type="text" id="roll-template" spellcheck="false" autocomplete="off">
         </label>
-        <p class="note" id="roll-fields">
+        <p class="note">
           Fields: <code>{roll}</code> <code>{frame}</code> <code>{original}</code>
           <code>{date}</code> <code>{time}</code> <code>{stock}</code>.
           <code>{frame:02d}</code> pads the number, and a <code>/</code> makes a
@@ -254,7 +254,7 @@
           <span>Save to</span>
           <input type="text" id="output-dir" spellcheck="false" autocomplete="off">
         </label>
-        <p class="note" id="output-dir-note">
+        <p class="note">
           Press <kbd>Enter</kbd> or click away to apply. A relative path resolves
           against the project folder, and the folder is created if it does not
           exist. Changes last for this session &mdash; to make one permanent, set

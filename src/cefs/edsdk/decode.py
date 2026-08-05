@@ -1,9 +1,7 @@
 """Decode camera files to RGB using EDSDK itself.
 
-ROADMAP.md v0.3 asked whether EDSDK can decode RAW to RGB, because if it could
-it would remove a separate RAW dependency and directly solve inverting CRAW.
-
-**Measured answer: no, not for CR3.** On EDSDK 13.20.21 with real R7 files:
+Whether EDSDK can decode RAW mattered: if it could, the separate RAW dependency
+would go away. **Measured answer: no, not for CR3.** On 13.20.21 with R7 files:
 
 ==========  ===================  =========================================
 file        ``EdsGetImageInfo``  ``EdsGetImage`` (RGB / RGB16 / Jpeg / DIB)
@@ -12,17 +10,13 @@ JPEG        OK, 8-bit            **all OK** -- RGB16 returns w*h*3*2 bytes
 CR3         OK, "1620x1080/16"   **NOT_SUPPORTED for every target**
 ==========  ===================  =========================================
 
-So ``EdsGetImage`` works; it simply refuses CR3. Worse, ``EdsGetImageInfo``
-answers happily for a CR3 and reports 1620x1080 at 16-bit -- metadata for an
-embedded preview, not a decodable image, and nowhere near the sensor's 32.5 MP.
-Trusting that call alone would have produced a confident wrong answer.
+``EdsGetImage`` works; it simply refuses CR3. Worse, ``EdsGetImageInfo``
+answers happily for a CR3 with 1620x1080/16-bit -- an embedded preview, not a
+decodable image -- so trusting it alone gives a confident wrong answer.
 
-RAW therefore goes through :mod:`cefs.processing.raw` (rawpy/LibRaw), which
-decodes the same file to the full 6984x4660 at 16 bits in about 3 seconds.
-
-This module remains useful for the formats EDSDK does handle, and as the
-executable record of the finding above. It needs ``EdsInitializeSDK`` but no
-camera session, so files decode with nothing plugged in.
+RAW therefore goes through :mod:`cefs.processing.raw`. This module stays for the
+formats EDSDK does handle, and as the executable record of the above. It needs
+``EdsInitializeSDK`` but no camera session.
 """
 
 from __future__ import annotations
@@ -38,7 +32,7 @@ from typing import Any
 import numpy as np
 
 from cefs.edsdk import bindings as b
-from cefs.edsdk.errors import EDS_ERR_OK, EdsError, check, error_name
+from cefs.edsdk.errors import EDS_ERR_OK, check, error_name
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +42,7 @@ COINIT_APARTMENTTHREADED = 0x2
 class DecodeUnavailable(RuntimeError):
     """EDSDK could not decode this file.
 
-    Raised rather than silently falling back, so an unsupported format is
+    Raised rather than falling back silently, so an unsupported format is
     diagnosable instead of quietly producing something wrong.
     """
 
@@ -56,8 +50,7 @@ class DecodeUnavailable(RuntimeError):
 class EdsdkDecoder:
     """Decodes camera files to numpy arrays via EDSDK.
 
-    Use as a context manager, or call :meth:`close` when done. Initialising the
-    SDK twice in one process is not safe, so a single instance should be shared.
+    Initialising the SDK twice in one process is unsafe, so share one instance.
     """
 
     def __init__(self, library_dir: str | Path, library_path: str | Path | None = None) -> None:
@@ -117,28 +110,17 @@ class EdsdkDecoder:
             }
 
     def decode(self, path: Path | str, half: bool = False) -> np.ndarray:
-        """Decode a camera file to a 16-bit RGB array.
+        """Decode to a ``uint16`` ``(H, W, 3)`` array in **RGB**, not OpenCV's BGR.
 
-        Args:
-            path: The file to decode.
-            half: Render at half dimensions. Much faster, and plenty for
-                sampling the film base or previewing inversion parameters.
-
-        Returns:
-            ``uint16`` array of shape ``(H, W, 3)`` in **RGB** order. Note that
-            is RGB, not OpenCV's BGR -- this is what EDSDK produces, and it is
-            converted at the boundary rather than here.
-
-        Raises:
-            DecodeUnavailable: If EDSDK will not decode this file.
+        That is what EDSDK produces; it is converted at the boundary, not here.
+        ``half`` renders at half dimensions, much faster.
         """
         with self._lock, self._image_ref(path) as (image, source):
             info = b.EdsImageInfo()
             check("EdsGetImageInfo", self._dll.EdsGetImageInfo(image, source, byref(info)))
 
             rect = info.effectiveRect
-            # Render the effective rectangle, not the full readout: the extra
-            # margin is sensor overscan, not picture.
+            # The effective rect, not the full readout: the margin is overscan.
             src = b.EdsRect(
                 b.EdsPoint(rect.point.x, rect.point.y),
                 b.EdsSize(rect.size.width, rect.size.height),
@@ -250,11 +232,3 @@ class EdsdkDecoder:
     def _image_ref(self, path: Path | str):
         return EdsdkDecoder._ImageRef(self, Path(path))
 
-
-def to_bgr8(rgb16: np.ndarray) -> np.ndarray:
-    """Convert a 16-bit RGB array to 8-bit BGR for display.
-
-    Only for preview and JPEG output. Keep the 16-bit array for any actual
-    processing: this throws away exactly the headroom inversion needs.
-    """
-    return (rgb16 >> 8).astype(np.uint8)[:, :, ::-1]

@@ -107,11 +107,12 @@ control — it can fire your shutter.
 | | |
 |---|---|
 | Live view | 960×640, ~60 fps available, 30 fps default |
-| Capture download | ~10 MB/s (a 14.6 MB HEIF in ~1.4 s) |
-| Focus drive | works; 0.15–0.41 s per keypress depending on coarseness |
-| Focus steps | one SDK step is below the frame noise, so each press sends 8–20 |
+| Capture download | **26 MB/s** (a 34.7 MB CR3 in 1.3 s) |
+| Focus drive | works; 0.03 / 0.12 / 0.49 s per press (fine / medium / coarse) |
+| Focus steps | fine is the SDK minimum, 1×1; medium 2×6, coarse 3×20 |
 | Peaking | +7.4 ms/frame; whole pipeline 14.9 ms, still inside the 17 ms budget at 60 fps |
 | Sharpness metric | gated Tenengrad, **11.1×** separation on real frames |
+| Capture cycle | ~3 s RAW only; ~15 s for RAW+HEIF with a positive from each |
 | Camera-side live-view zoom | **not available** over EDSDK; the software loupe is the only magnification |
 | Electronic shutter | **not selectable** over EDSDK — set Shutter mode in the camera menu |
 
@@ -185,6 +186,8 @@ later unless it was written down at the time.
 src/cefs/
 ├── backend.py       The contract both backends implement
 ├── config.py        Defaults, then config.yaml, then CEFS_* env vars
+├── naming.py        Template -> Roll014/Roll014_Frame07.CR3
+├── sidecar.py       The per-roll roll.json written beside the frames
 ├── edsdk/           ctypes bindings + the camera thread. Native, Windows-first.
 │   ├── bindings.py      The ONLY place SDK signatures and constants live
 │   ├── camera.py        Camera thread: STA, message pump, command queue
@@ -193,7 +196,7 @@ src/cefs/
 ├── app/             Local web server + browser UI
 ├── mock/            A fake backend, so development needs no SDK and no camera
 └── tools/           Diagnostics: check_camera reports what a body supports
-tests/               64 tests, all runnable with no camera and no SDK
+tests/               203 tests, all runnable with no camera and no SDK
 ```
 
 The layering matters: it is what lets the colour-inversion work happen with no hardware attached, and it is why roughly half of the sibling project can be ported straight across.

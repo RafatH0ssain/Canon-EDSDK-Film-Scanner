@@ -1,14 +1,7 @@
-"""Configuration loading.
+"""Configuration: built-in defaults, then ``config.yaml``, then
+``CEFS_<SECTION>_<KEY>`` environment variables, each overriding the last.
 
-Values come from three places, in increasing order of priority:
-
-1. Built-in defaults (below) -- so the app runs against the mock with no setup.
-2. ``config.yaml`` in the repository root -- git-ignored, holds your SDK path.
-3. Environment variables named ``CEFS_<SECTION>_<KEY>`` -- highest priority.
-
-The env-var layer exists so tests can point the app at the mock backend without
-writing a file, and so you can try a different SDK directory for one run without
-editing anything.
+The defaults select the mock, so a fresh clone runs with no config at all.
 """
 
 from __future__ import annotations
@@ -39,17 +32,14 @@ def _resolve(value: str) -> Path | None:
 class EdsdkConfig:
     """Where the user's own copy of Canon's SDK lives."""
 
-    # Deliberately not a real path: a committed default that happened to exist
-    # on someone's machine would silently load the wrong SDK.
+    # Deliberately blank: a committed default that happened to exist on someone's
+    # machine would silently load the wrong SDK.
     library_dir: str = ""
     library_path: str = ""
 
     def resolved_library_dir(self) -> Path | None:
-        """Absolute SDK directory, resolving relative paths against the repo.
-
-        Relative paths are convenient when the SDK sits beside the code, but
-        resolving them against the working directory would make the app work
-        from the repo root and fail everywhere else.
+        """Absolute SDK directory. Relative paths resolve against the repo, not
+        the working directory, which would work from the root and fail elsewhere.
         """
         return _resolve(self.library_dir)
 
@@ -61,17 +51,15 @@ class EdsdkConfig:
 class LiveViewConfig:
     """The live-view frame pump."""
 
-    # Caps how hard the pump polls. The measured ceiling on an EOS R7 is the
-    # camera's own ~60 fps output, not the USB link, so a higher number here
-    # buys nothing and only burns CPU.
+    # Only caps how hard the pump polls. The R7's ceiling is its own ~60 fps
+    # output, not USB, so a higher number buys nothing and burns CPU.
     target_fps: int = 30
 
 
 @dataclass
 class CameraConfig:
-    """Which backend to drive."""
+    """Which backend to drive. Mock by default, so a fresh clone runs."""
 
-    # Defaults to the mock so a fresh clone runs with no SDK and no camera.
     use_mock: bool = True
 
 
@@ -143,10 +131,8 @@ class FilmConfig:
 
 @dataclass
 class ServerConfig:
-    """The local web UI."""
+    """The local web UI. Loopback by default: it can fire your shutter."""
 
-    # Loopback by default: this server can fire your shutter, so it should not
-    # be reachable from a network you do not control.
     host: str = "127.0.0.1"
     port: int = 8000
 
@@ -164,20 +150,15 @@ class Config:
 
 @cache
 def _field_types(cls: type) -> dict[str, Any]:
-    """Real types for a config dataclass's fields.
-
-    ``dataclasses.fields()`` reports annotations as strings under
-    ``from __future__ import annotations``, so comparing them to ``bool`` never
-    matches and values silently stay strings.
+    """Real types, not the strings ``dataclasses.fields()`` reports under
+    ``from __future__ import annotations`` -- which never match ``bool``.
     """
     return get_type_hints(cls)
 
 
 def _coerce(value: Any, target_type: Any) -> Any:
-    """Convert a raw YAML/env value to the declared field type.
-
-    Environment variables arrive as strings, and ``bool("false")`` is ``True``.
-    """
+    """Coerce a YAML/env value to the declared type. Env vars arrive as
+    strings, and ``bool("false")`` is ``True``."""
     if target_type is bool:
         if isinstance(value, bool):
             return value
@@ -217,19 +198,11 @@ def _apply_env(config: Config) -> None:
 
 
 def load_config(path: Path | str | None = None) -> Config:
-    """Load configuration from defaults, then ``config.yaml``, then the environment.
+    """Load defaults, then ``config.yaml``, then the environment.
 
-    Args:
-        path: Explicit path to a YAML config file. If omitted, ``config.yaml``
-            in the repository root is used when it exists. A missing default
-            file is not an error: the defaults select the mock backend, so a
-            fresh clone runs with no configuration at all.
-
-    Raises:
-        FileNotFoundError: If an explicit ``path`` was given but does not exist.
-        ValueError: On an unknown section or setting. Strict on purpose -- a
-            silently ignored typo in the SDK path is worse to debug than an
-            error at startup.
+    A missing default file is fine; an explicit ``path`` that is missing is not.
+    Unknown sections and settings raise, on purpose: a silently ignored typo in
+    the SDK path is worse to debug than an error at startup.
     """
     config = Config()
 

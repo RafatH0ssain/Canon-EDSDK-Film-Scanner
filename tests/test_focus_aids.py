@@ -1,4 +1,4 @@
-"""v0.2 focus aids: stepping, peaking overlay, sharpness readout."""
+"""Focus aids: stepping, peaking overlay, sharpness readout."""
 
 from __future__ import annotations
 

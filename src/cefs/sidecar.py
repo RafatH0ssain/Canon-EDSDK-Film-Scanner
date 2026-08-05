@@ -1,29 +1,19 @@
 """The per-roll ``roll.json`` written beside the scans.
 
-What a negative is depends on things the file cannot tell you: the stock, how
-it was developed, when it was shot. Six months later that context is gone
-unless it was written down at the time, so it is written down at the time.
+Stock, developer, date: things the file cannot tell you, and which are gone six
+months later unless written down while shooting. So it is rewritten after every
+capture, which forces two rules.
 
-The sidecar lives in the same folder as the frames it describes, and is
-rewritten after every capture. Three rules follow from it being written while
-you are still shooting:
-
-- **Never lose a frame already recorded.** Each write re-reads the file first
-  and appends. A crash, a restarted server, a second session on the same roll:
-  none of them may truncate the log.
-- **A broken sidecar must not break the capture.** It is metadata about scans;
-  the scans themselves are the thing that matters. Failures are logged and
-  swallowed by the caller.
-- **Never write it where the frames are not.** The path comes from the same
-  render as the frames, so a roll spread over two folders gets two sidecars,
-  each describing what is actually next to it.
+Never lose a recorded frame -- each write re-reads and appends, so a restart or
+a second session mid-roll cannot truncate the log. And never let it break a
+capture: it is metadata about scans, and failures are logged, not raised.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -31,8 +21,7 @@ logger = logging.getLogger(__name__)
 
 SIDECAR_NAME = "roll.json"
 
-#: Bumped only if the shape changes incompatibly. Readers should tolerate
-#: unknown keys rather than depend on this.
+#: Bumped only on an incompatible change; readers should tolerate unknown keys.
 SCHEMA = 1
 
 
@@ -44,17 +33,11 @@ class RollMetadata:
     stock: str = ""
     developer: str = ""
     notes: str = ""
-    #: ISO date the roll was shot or developed. Free text on purpose -- "1998"
-    #: and "summer 2019" are honest answers for a found roll.
+    #: Free text on purpose: "summer 2019" is an honest answer for a found roll.
     date: str = ""
 
     def as_dict(self) -> dict:
         return asdict(self)
-
-
-def sidecar_path(first_frame: Path) -> Path:
-    """Where the sidecar for a frame at this path belongs: beside it."""
-    return first_frame.parent / SIDECAR_NAME
 
 
 def read(path: Path) -> dict:
@@ -65,9 +48,8 @@ def read(path: Path) -> dict:
         loaded = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         logger.warning("Could not read %s (%s); it will not be overwritten.", path, exc)
-        # Signalling unreadable rather than empty matters: an empty dict would
-        # be treated as a fresh roll and the file replaced, throwing away a
-        # frame log that a human might still be able to salvage by hand.
+        # Not an empty dict: that reads as a fresh roll and the file gets
+        # replaced, discarding a log a human might have salvaged by hand.
         return {"_unreadable": True}
     return loaded if isinstance(loaded, dict) else {"_unreadable": True}
 
@@ -80,19 +62,11 @@ def record_capture(
     positives: list[str] | None = None,
     when: datetime | None = None,
 ) -> bool:
-    """Append one frame to the roll's sidecar, creating it if needed.
+    """Append one frame, creating the sidecar if needed.
 
-    Args:
-        path: The sidecar itself, from :func:`sidecar_path`.
-        metadata: Roll-level fields, refreshed on every write so a stock typed
-            in halfway through the roll still lands.
-        frame: Frame number.
-        files: Names of the captures, relative to the sidecar's folder.
-        positives: Names of any developed positives.
-        when: Defaults to now.
-
-    Returns:
-        Whether it was written. False means the existing file was left alone.
+    ``metadata`` is rewritten every time, so a stock typed in halfway through
+    the roll still lands. ``files`` are names relative to the sidecar's folder.
+    Returns False if the existing file was left alone.
     """
     existing = read(path)
     if existing.get("_unreadable"):
@@ -108,9 +82,7 @@ def record_capture(
         "files": list(files),
         "positives": list(positives or []),
     }
-    # Re-shooting a frame replaces its entry rather than adding a second one --
-    # you re-shoot because the first attempt was wrong, and a log with both is
-    # a log you have to interpret.
+    # Re-shooting replaces the entry: you re-shot because the first was wrong.
     frames = [f for f in frames if not (isinstance(f, dict) and f.get("frame") == frame)]
     frames.append(entry)
     frames.sort(key=lambda f: f.get("frame", 0))
@@ -124,8 +96,7 @@ def record_capture(
 
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Write beside, then replace: a crash mid-write leaves the old sidecar
-        # intact rather than a half-written one.
+        # Write beside then replace, so a crash mid-write leaves the old file.
         temporary = path.with_name(path.name + ".tmp")
         temporary.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
         temporary.replace(path)

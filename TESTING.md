@@ -1,7 +1,7 @@
 # Testing on the real rig
 
-A walkthrough of everything built so far (v0.1–v0.3), on the actual camera with
-actual film. Roughly 30–40 minutes.
+A walkthrough of everything built so far, on the actual camera with actual
+film. Roughly 30–40 minutes.
 
 The point is not to confirm it works. It is to find where it doesn't — every
 number in the commit history so far came from synthetic fixtures, and a mock
@@ -163,7 +163,7 @@ sensitivity range, or peaking makes live view noticeably stutter.
 
 ---
 
-## 6. The inversion — the main event for v0.3
+## 6. The inversion — the main event
 
 This is new and the most likely to need tuning on real film.
 
@@ -175,7 +175,7 @@ Untick **Invert to positive** to see the negative itself.
 | Setting | What to expect |
 |---|---|
 | Invert unticked | The negative as the camera sees it — orange, inverted tones |
-| **Linear** | The old v0.1 flip. On **colour** film this should look clearly **cyan** |
+| **Linear** | The plain flip. On **colour** film this should look clearly **cyan** |
 | **Film** | The real pipeline: neutral, properly exposed positive |
 
 Exposure, contrast and the base sampler only feed **Film**, so they grey out

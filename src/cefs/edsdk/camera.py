@@ -1,19 +1,11 @@
 """The camera thread: one thread owns EDSDK, everything else asks it to work.
 
-EDSDK delivers events through COM, which requires the thread that called
-``EdsInitializeSDK`` to be in a single-threaded apartment with a running Windows
-message pump. That is not a detail to tidy up later -- it decides the shape of
-the whole application:
-
-- Every SDK call happens on this one thread. Session, live view, properties,
-  shutter, download.
-- Every other part of the app submits a callable to a queue and waits for the
-  result. A request handler never touches the SDK.
-- The thread must pump messages regularly or events never arrive, including the
-  capture-complete notification that download depends on.
-
-Getting this wrong produces hangs and silently missing events rather than clean
-errors, which is why the thread is built properly before anything sits on it.
+EDSDK delivers events through COM, so the thread that called
+``EdsInitializeSDK`` must sit in a single-threaded apartment with a running
+Windows message pump. That decides the shape of the whole application: every
+SDK call happens here, everything else submits a callable and waits, and the
+thread must keep pumping or events -- including capture-complete -- never
+arrive. Getting it wrong gives hangs and missing events, not clean errors.
 """
 
 from __future__ import annotations
@@ -28,9 +20,9 @@ from concurrent.futures import Future
 from ctypes import byref, c_char, c_uint32, c_uint64, c_void_p
 
 if sys.platform == "win32":
-    # Not pulled in by `import ctypes`; without this the message pump raises
-    # AttributeError on its first call and the camera thread dies silently
-    # after the session is already open -- which looks like "no frames".
+    # Not pulled in by `import ctypes`. Without it the pump raises
+    # AttributeError on first call and the thread dies silently -- which
+    # presents as "connected, no frames".
     from ctypes import wintypes
 from pathlib import Path
 from typing import Any, Callable
@@ -121,8 +113,8 @@ class _Command:
 class EdsdkCamera:
     """Camera backend driving a real body over EDSDK/USB.
 
-    Public methods are safe to call from any thread; they enqueue work and wait.
-    Everything prefixed ``_on_thread`` runs on the camera thread only.
+    Public methods are safe from any thread; they enqueue and wait. Anything
+    prefixed ``_on_thread`` runs on the camera thread only.
     """
 
     def __init__(
@@ -157,9 +149,8 @@ class EdsdkCamera:
         self._info = CameraInfo(model="(not connected)", backend="edsdk")
         self._capabilities = Capabilities()
 
-        # Handlers registered with the SDK must outlive registration. If Python
-        # collects the trampoline the SDK calls freed memory and the process
-        # dies with no traceback, so these references are load-bearing.
+        # Load-bearing: if Python collects the trampoline, the SDK calls freed
+        # memory and the process dies with no traceback.
         self._object_handler: Any = None
         self._pending_transfers: list[int] = []
 
@@ -175,8 +166,8 @@ class EdsdkCamera:
         self._thread = threading.Thread(target=self._run, name="cefs-camera", daemon=True)
         self._thread.start()
 
-        # Surface a connection failure to the caller rather than leaving a dead
-        # thread and an app that looks fine until the first frame never arrives.
+        # Surface failures here, not as an app that looks fine until no frame
+        # ever arrives.
         if not self._ready.wait(timeout=30.0):
             self._stopping.set()
             raise CameraError("Camera thread did not become ready within 30 s.")
@@ -207,12 +198,8 @@ class EdsdkCamera:
 
     @settle_delay_s.setter
     def settle_delay_s(self, seconds: float) -> None:
-        """Safe from any thread without the command queue.
-
-        One float, written here and read once on the camera thread at the top
-        of a capture. There is nothing to tear: a capture already in flight
-        keeps the value it started with, and the next one picks this up.
-        """
+        """Safe from any thread: one float, read once at the top of a capture.
+        A capture in flight keeps the value it started with."""
         self._settle_delay_s = max(0.0, float(seconds))
 
     # --- public operations (any thread) -------------------------------------
@@ -225,7 +212,7 @@ class EdsdkCamera:
             return self._frame
 
     def _fail_pending(self, error: BaseException | None) -> None:
-        """Complete any queued commands, so no caller waits on a dead thread."""
+        """Complete queued commands, so no caller waits on a dead thread."""
         failure = error or CameraError("Camera thread stopped.")
         while True:
             try:
@@ -585,8 +572,8 @@ class EdsdkCamera:
         destination_dir.mkdir(parents=True, exist_ok=True)
         self._pending_transfers.clear()
 
-        # Route the file to this computer, and tell the camera the destination
-        # has room -- it refuses to shoot otherwise, whatever the real disk has.
+        # Route to this computer, and claim the destination has room -- the
+        # camera refuses to shoot otherwise, whatever the real disk has.
         self._write_uint(b.kEdsPropID_SaveTo, b.kEdsSaveTo_Host, "SaveTo")
         capacity = b.EdsCapacity(numberOfFreeClusters=0x7FFFFFFF, bytesPerSector=512, reset=1)
         check(
@@ -596,8 +583,7 @@ class EdsdkCamera:
             ),
         )
 
-        # Settle delay: on a copy stand, residual vibration from the last thing
-        # that touched the rig is the main cause of soft scans.
+        # On a copy stand, residual vibration is the main cause of soft scans.
         if self._settle_delay_s > 0:
             deadline = time.perf_counter() + self._settle_delay_s
             while time.perf_counter() < deadline:
@@ -607,9 +593,8 @@ class EdsdkCamera:
 
         self._send_shutter()
 
-        # Wait for the camera to tell us the file exists, pumping messages --
-        # the event arrives through the message queue, so a plain sleep here
-        # would wait forever.
+        # Pump while waiting: the event arrives through the message queue, so a
+        # plain sleep would wait forever.
         deadline = time.perf_counter() + 60.0
         while not self._pending_transfers and time.perf_counter() < deadline:
             pump_messages()

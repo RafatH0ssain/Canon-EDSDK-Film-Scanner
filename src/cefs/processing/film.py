@@ -1,56 +1,19 @@
-"""Negative-to-positive inversion, done properly.
+"""Negative-to-positive inversion.
 
-This is the hardest part of the project, and the part where a plausible-looking
-shortcut gives visibly wrong results. The v0.1 linear flip (255 - x) is honest
-about being only a preview toggle; this module is the real thing.
+A linear flip (255 - x) is wrong twice over. Colour negative film carries an
+orange dye mask, which flipping inverts along with the image -- hence the cyan
+cast -- and it is a multiplicative attenuation, so it is removed by *dividing*
+by the measured film base. And density is logarithmic: recovering scene
+brightness from transmittance is a reciprocal, not a subtraction.
 
-WHY A LINEAR FLIP IS WRONG
---------------------------
-Two independent reasons, and colour film suffers both.
+So: linearise, divide by the base, take ``base / pixel``, scale each channel to
+its highlight, fit a per-channel gamma so the midtones agree, then set exposure
+from the *median* (a specular highlight makes a terrible exposure reference),
+apply black/white points and contrast, and sRGB-encode.
 
-*The orange mask.* Colour negative film carries a dye mask across the whole
-frame that attenuates blue heavily and red barely. Flipping that along with the
-image inverts the mask too, which is why an un-neutralised colour negative comes
-out strongly cyan. The mask is a constant multiplicative attenuation, so
-dividing by it removes it -- but only if you know what it is, which means
-measuring the film base.
-
-*Density is logarithmic, brightness is not.* Film records a scene as optical
-density, roughly proportional to the log of exposure, and the camera captures
-transmittance. Getting back to something proportional to scene brightness is a
-reciprocal, not a subtraction. Subtracting gives the familiar milky positive
-with compressed midtones.
-
-THE PIPELINE
-------------
-1. Linearise. Live-view JPEG is sRGB-encoded; RAW is already linear.
-2. Sample the film base -- the unexposed rebate, which is the *brightest* part
-   of a negative because nothing exposed it.
-3. Divide by the base, per channel. Neutralises the mask and normalises
-   exposure in one step.
-4. Take the reciprocal: ``base / pixel`` is proportional to scene exposure.
-5. Scale each channel so real highlights reach white, then fit a per-channel
-   curve so the midtones agree -- the three emulsion layers differ in contrast,
-   not just in attenuation, so matching highlights alone leaves a cast.
-6. Set exposure from the *median*, not the highlight. Scaling to the brightest
-   percentile sets a good clipping point but a terrible exposure: one specular
-   reflection can leave the whole frame bunched near black. Darkroom printing
-   meters the midtones, and so does this.
-7. Black/white points, contrast, and sRGB encoding.
-
-Both film types are first class. Black-and-white takes the same path with the
-per-channel steps collapsed, rather than being a special case bolted on.
-
-HOW IT IS FAST ENOUGH
----------------------
-Every per-pixel step above is a *scalar function of one input value*: the base,
-the scale and the fitted gamma are per-channel constants for a given frame. So
-the whole chain collapses into one lookup table per channel, built once per
-frame from a subsample and applied with a single gather.
-
-That is not only an optimisation. It is what lets the live preview and the saved
-16-bit file share one implementation -- the tables come from the same function,
-differing only in how many entries they have.
+Every step is a scalar function of one input, so the whole chain collapses into
+one lookup table per channel. That is what makes it fast, and what lets the live
+preview and the saved 16-bit file share an implementation instead of drifting.
 """
 
 from __future__ import annotations
@@ -65,60 +28,44 @@ import numpy as np
 # Below this a pixel is noise or a clear scratch, and the reciprocal explodes.
 _EPS = 1e-5
 
-# sRGB transfer function constants.
 _SRGB_THRESHOLD = 0.04045
 _SRGB_LINEAR_SCALE = 12.92
 _SRGB_ALPHA = 0.055
 
-#: Linear value the typical scene tone should land on. 18% grey is the
-#: photographic convention, and the eye agrees with it.
 _MIDGREY = 0.18
 
-#: Pixels sampled when estimating base, scale and balance. A percentile over
-#: 32 million pixels gives the same answer as one over 200k, far more slowly.
+# A percentile over 32 million pixels gives the same answer as one over 200k.
 _ANALYSIS_SAMPLES = 200_000
 
 
 @dataclass
 class FilmParams:
-    """Everything that controls the inversion.
-
-    The defaults give a reasonable positive from a typical colour negative with
-    nothing adjusted. All of them are exposed in the UI, because film stocks
-    differ and no single set of numbers is right for every one.
-    """
+    """Everything that controls the inversion. All of it is exposed in the UI."""
 
     mode: str = "color"  # "color" or "bw"; both first class
 
-    #: Film base (unexposed rebate) in linear RGB, 0-1. ``None`` samples it from
-    #: the frame. The single most important value in the pipeline.
+    #: Film base (unexposed rebate), linear RGB 0-1. None measures it from the
+    #: frame. The single most important value in the pipeline.
     base: tuple[float, float, float] | None = None
 
-    #: Overall exposure of the positive, as a multiplier.
     exposure: float = 1.0
 
-    #: Contrast gamma. Negative film has a gamma near 0.6, so the positive needs
-    #: roughly its inverse to regain normal contrast.
+    #: Negative film has a gamma near 0.6, so the positive needs its inverse.
     contrast: float = 1.65
 
-    #: Clip points on the normalised positive, before the contrast curve.
     black_point: float = 0.0
     white_point: float = 1.0
-
-    #: Per-channel trim, for a cast left after the automatic balance.
     channel_gain: tuple[float, float, float] = (1.0, 1.0, 1.0)
 
-    #: Percentile treated as the highlight. Below 100 so one dust speck or
-    #: scratch cannot define white for the whole frame.
+    #: Below 100 so a dust speck cannot define white for the whole frame.
     highlight_percentile: float = 99.5
 
-    #: Fit a per-channel gamma so the channels' midtones agree. See the module
-    #: docstring: matching highlights alone leaves a visible cast.
+    #: Fit a per-channel gamma so midtones agree; matching highlights alone
+    #: leaves a visible cast.
     auto_balance: bool = True
 
-    #: Set exposure from the median so the midtones land on 18% grey. Without
-    #: it, one specular highlight defines white and the whole frame sits dark.
-    #: ``exposure`` still applies on top, as a manual trim.
+    #: Place the median on 18% grey. Without it one specular highlight defines
+    #: white and the frame sits dark. ``exposure`` still applies on top.
     auto_exposure: bool = True
 
     def replace(self, **changes) -> "FilmParams":
@@ -127,12 +74,10 @@ class FilmParams:
         return FilmParams(**merged)
 
     def without_base(self) -> "FilmParams":
-        """A copy with the film base cleared, so it is measured afresh.
+        """A copy with the base cleared.
 
-        :meth:`replace` cannot express this: it drops ``None`` so that a
-        partial update from the UI does not wipe every field it left out, which
-        means ``replace(base=None)`` quietly keeps the old base instead of
-        resetting it.
+        :meth:`replace` cannot express this -- it drops ``None``, so
+        ``replace(base=None)`` keeps the base it claims to clear.
         """
         return dataclasses.replace(self, base=None)
 
@@ -173,30 +118,16 @@ def linear16_to_linear(image: np.ndarray) -> np.ndarray:
 
 # --- PQ, for HEIF ------------------------------------------------------------
 #
-# A Canon body writes HEIF only in HDR PQ mode, and the file says so: measured
-# on an EOS R7 .HIF, the NCLX profile reports transfer characteristic 16
-# (SMPTE ST 2084, "PQ") over BT.2020 primaries at 10 bits. PQ is not a gamma
-# curve and is nowhere near sRGB: on that same file the negative's true
-# transmittance range is 4.15x, and reading the codes as sRGB gives 1.70x.
+# A Canon body writes HEIF only in HDR PQ mode: measured on an R7 .HIF, the NCLX
+# profile says transfer characteristic 16 (SMPTE ST 2084) over BT.2020 at 10
+# bits. Reading those codes as sRGB costs 3.1% mean error against 0.9% for the
+# correct path -- and that 0.9% is the 10-bit quantisation floor, so the
+# transfer itself contributes nothing. On a wider-range original the gap is 31x.
 #
-# How much that matters is worth stating honestly, because the answer is "less
-# than you would expect, and more the better your negative is". The inversion
-# measures base, scale and exposure per frame, so it absorbs most of a wrong
-# input curve. Measured against a linear reference of the same scene: on the
-# density range a real negative occupies the sRGB misreading costs 3.1% mean
-# absolute error against the PQ path's 0.9% -- and the 0.9% is the 10-bit
-# quantisation floor, which is 0.98% with no file involved at all, so the
-# transfer itself contributes essentially nothing. On a wider-range original
-# the gap opens to 31x. A wrongly decoded positive would still look like a
-# photograph; it would just be a few percent flatter and darker than the one
-# the same negative gives through every other path in this program.
-#
-# Primaries are deliberately *not* converted to sRGB here. The RAW path decodes
-# in the camera's own primaries too (``output_color=raw`` in
-# :mod:`cefs.processing.raw`), and the per-channel base division that follows is
-# a far stronger colour normalisation than a primaries matrix. Converting on one
-# path and not the other would make the two disagree, which is worse than both
-# being consistently approximate.
+# Primaries are deliberately not converted. The RAW path stays in the camera's
+# own primaries too (``output_color=raw``), and the base division that follows
+# normalises colour far harder than a primaries matrix would. Converting on one
+# path and not the other would be worse than both being approximate.
 
 _PQ_M1 = 2610 / 16384
 _PQ_M2 = 2523 / 4096 * 128
@@ -206,12 +137,9 @@ _PQ_C3 = 2392 / 4096 * 32
 
 
 def pq_to_linear(pq: np.ndarray) -> np.ndarray:
-    """Decode PQ-encoded 0-1 values to linear 0-1.
+    """Decode PQ 0-1 to linear 0-1, where 1.0 is ST 2084's 10000 cd/m^2 peak.
 
-    The ST 2084 EOTF is defined against an absolute 10000 cd/m^2 peak, so 1.0
-    out means 10000 nits rather than "white". That fixed reference is exactly
-    what is wanted: every frame of a roll decodes on the same scale, and the
-    inversion's own base division sets the working exposure afterwards.
+    An absolute reference, so every frame of a roll decodes on one scale.
     """
     p = np.power(np.clip(np.asarray(pq, dtype=np.float64), 0.0, 1.0), 1.0 / _PQ_M2)
     return np.power(np.maximum(p - _PQ_C1, 0.0) / (_PQ_C2 - _PQ_C3 * p), 1.0 / _PQ_M1)
@@ -219,12 +147,10 @@ def pq_to_linear(pq: np.ndarray) -> np.ndarray:
 
 @cache
 def pq16_to_linear_lut() -> np.ndarray:
-    """Linear value of every 16-bit PQ code.
+    """Linear value of every 16-bit PQ code. 256 KB, built once.
 
-    256 KB, built once. Canon's 10-bit samples arrive left-shifted into 16 bits
-    -- measured: the gap between adjacent distinct values is exactly 64 -- so
-    indexing this table with the raw code is exact, and every one of the source
-    file's distinct levels survives.
+    Canon's 10-bit samples arrive left-shifted into 16 bits -- measured, the gap
+    between adjacent values is exactly 64 -- so this is lossless.
     """
     return pq_to_linear(np.arange(65536, dtype=np.float64) / 65535.0).astype(np.float32)
 
@@ -244,23 +170,12 @@ def sample_base(
     region: tuple[float, float, float, float] | None = None,
     percentile: float = 99.0,
 ) -> tuple[float, float, float]:
-    """Measure the film base from a negative.
+    """Measure the film base, per channel, from a linear ``(H, W, 3)`` image.
 
-    The unexposed rebate is the brightest part of a negative -- nothing exposed
-    it, so it has minimum density and passes the most light. A high percentile
-    is therefore a usable automatic estimate even when the rebate is out of
-    frame, because the densest part of the image approaches base density anyway.
-
-    Args:
-        linear: Linear float image ``(H, W, 3)``.
-        region: Optional ``(x, y, w, h)`` in normalised 0-1 coordinates, to
-            sample a rebate the user has pointed at. Much more reliable than the
-            automatic estimate whenever the rebate is actually visible.
-        percentile: Percentile treated as base when no region is given. Not 100:
-            a dust speck or light leak would otherwise define it.
-
-    Returns:
-        Per-channel base values, linear.
+    The unexposed rebate is the *brightest* part of a negative, so a high
+    percentile works even when the rebate is out of frame. Pass ``region`` --
+    ``(x, y, w, h)`` normalised -- to sample a rebate the user pointed at, which
+    is far more reliable when one is visible.
     """
     if linear.ndim != 3 or linear.shape[2] != 3:
         raise ValueError("sample_base expects a 3-channel image.")
@@ -284,26 +199,20 @@ def sample_base(
 
 
 def _positive_scalar(x: np.ndarray, base: float) -> np.ndarray:
-    """Reciprocal of transmittance, with the film base at zero.
-
-    ``base / pixel`` is proportional to scene exposure; subtracting one puts the
-    base -- unexposed, so black in the positive -- at zero.
-    """
+    """``base / pixel`` is proportional to scene exposure; -1 puts base at zero."""
     return np.maximum(base / np.maximum(x, _EPS) - 1.0, 0.0)
 
 
 def analyse(linear: np.ndarray, params: FilmParams) -> dict:
-    """Measure the per-channel constants the inversion needs.
+    """Measure the per-channel constants :func:`build_luts` needs.
 
-    Runs on a subsample, so it costs about the same on a 32 MP RAW as on a
-    live-view frame. Returns everything :func:`build_luts` needs.
+    Runs on a subsample, so a 32 MP RAW costs about what a live-view frame does.
     """
     base = params.base if params.base is not None else sample_base(linear)
     base_arr = np.asarray(base, dtype=np.float64)
     if params.mode == "bw":
-        # One base for all channels. A per-channel base on a monochrome negative
-        # would invent a colour cast out of sensor noise -- exactly the kind of
-        # plausible-looking wrongness this module exists to avoid.
+        # One base for all channels: a per-channel base on a monochrome negative
+        # would invent a colour cast out of sensor noise.
         base_arr = np.full(3, float(base_arr.mean()))
 
     flat = _subsample(linear).astype(np.float64)
@@ -315,31 +224,20 @@ def analyse(linear: np.ndarray, params: FilmParams) -> dict:
     gammas = np.ones(3)
 
     if params.mode != "bw" and params.auto_balance:
-        # Match each channel's median to green's. Green is the reference because
-        # it is the least extreme channel of a colour negative: red passes the
-        # mask nearly untouched, blue is heavily attenuated.
+        # Match each channel's median to green's -- the least extreme channel of
+        # a colour negative, since red passes the mask nearly untouched and blue
+        # is heavily attenuated. Solve m ** g = reference, clamped, because a
+        # wild exponent means the fit's assumption does not hold for this frame.
         medians = np.array([float(np.median(p / s)) for p, s in zip(positives, scales)])
         if np.all((medians > 1e-3) & (medians < 1 - 1e-3)):
             reference = medians[1]
             for c in (0, 2):
-                # Solve m ** g = reference. Clamped: a wild exponent means the
-                # assumption behind the fit does not hold for this frame, and a
-                # mild correction beats a violent wrong one.
                 gammas[c] = float(np.clip(np.log(reference) / np.log(medians[c]), 0.4, 2.5))
 
-    # Place the midtones, not the highlight.
-    #
-    # Scaling so the 99.5th percentile reaches white sets a sensible *clipping*
-    # point, but it is a poor exposure: one specular highlight or a bright sky
-    # can sit far above everything else, leaving the whole scene bunched near
-    # black once the contrast gamma is applied. On a synthetic negative the
-    # median landed at 0.09 of the highlight, and the finished positive came out
-    # at a mean of 48/255 -- visibly dark, and wrong in the same way an
-    # enlarger set from a specular reflection would be.
-    #
-    # So exposure is set from the median, as darkroom printing does. Solving
-    # ``(median * k) ** contrast == MIDGREY`` for k puts the typical tone where
-    # the eye expects it, and the highlight scaling still governs clipping.
+    # Exposure from the median, as darkroom printing does. Scaling to the 99.5th
+    # percentile clips well but exposes badly: one specular highlight left a test
+    # frame at a mean of 48/255. Solving (median * k) ** contrast == MIDGREY puts
+    # the typical tone where the eye expects it; highlights still govern clipping.
     auto_exposure = 1.0
     if params.auto_exposure:
         greys = np.concatenate([p / s for p, s in zip(positives, scales)])
@@ -366,20 +264,11 @@ def build_luts(
     out_bits: int,
     input_linear: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Build one lookup table per channel covering the whole transfer.
+    """One ``(3, 2 ** in_bits)`` table covering the whole transfer.
 
-    Args:
-        measured: Output of :func:`analyse`.
-        params: See :class:`FilmParams`.
-        in_bits: 8 for a live-view frame, 16 for decoded RAW.
-        out_bits: 8 for preview, 16 for a saved file.
-        input_linear: The linear value each input code represents. Defaults to
-            an sRGB decode at 8 bits and a straight scale at 16. HEIF passes
-            :func:`pq16_to_linear_lut` here, which composes the PQ EOTF into
-            the same single gather rather than decoding the image twice.
-
-    Returns:
-        ``(3, 2 ** in_bits)`` table of the output dtype.
+    ``input_linear`` overrides what each input code means -- an sRGB decode at 8
+    bits, a straight scale at 16. HEIF passes :func:`pq16_to_linear_lut`, which
+    folds the PQ EOTF into the same gather instead of decoding twice.
     """
     if input_linear is not None:
         inputs = np.asarray(input_linear, dtype=np.float64)
@@ -411,11 +300,9 @@ def build_luts(
         x = x * float(measured.get("auto_exposure", (1.0, 1.0, 1.0))[c])
         x = np.clip((x - black) / (white - black), 0.0, 1.0)
         if params.contrast != 1.0:
-            # x ** contrast, not x ** (1 / contrast). Film records
-            # D = gamma * log(E) with gamma near 0.6, so base/pixel recovers
-            # E ** gamma, and getting back to E means raising to 1 / gamma --
-            # which is what `contrast` holds. Inverting this exponent silently
-            # flattens every image instead of restoring its contrast.
+            # x ** contrast, NOT x ** (1 / contrast). base/pixel recovers
+            # E ** gamma, so getting back to E raises to 1 / gamma -- which is
+            # what `contrast` already holds. Inverting it flattens every image.
             x = np.power(x, float(params.contrast))
         out[c] = np.clip(_srgb_encode(x) * peak + 0.5, 0, peak).astype(dtype)
     return out
@@ -424,15 +311,9 @@ def build_luts(
 def _apply_luts(image: np.ndarray, luts: np.ndarray, mode: str) -> np.ndarray:
     """Map each channel through its own table."""
     if mode == "bw":
-        # Collapse first, not last. In "bw" every channel shares one base and
-        # the output is neutral by definition, so mapping three channels and
-        # then averaging does the same work three times. Averaging the input
-        # and mapping once is the same result for a monochrome negative, and
-        # measurably faster on every frame.
-        # cv2's conversion is SIMD and several times faster than a numpy mean
-        # plus a cast. It weights the channels for luma rather than averaging
-        # them equally, which makes no practical difference here: a monochrome
-        # negative's three channels carry the same image.
+        # Collapse first, not last: in "bw" all channels share one base and the
+        # output is neutral anyway, so mapping three and averaging does the work
+        # three times. cv2's conversion is SIMD and much faster than numpy here.
         grey = cv2.cvtColor(np.ascontiguousarray(image), cv2.COLOR_RGB2GRAY)
         mapped = luts[1][grey]
         return np.repeat(mapped[:, :, None], 3, axis=2)
@@ -451,12 +332,8 @@ def invert_preview(
 ) -> np.ndarray:
     """Invert an 8-bit BGR frame, returning 8-bit BGR.
 
-    Args:
-        bgr8: Live-view frame, BGR uint8.
-        params: See :class:`FilmParams`.
-        measured: Reuse a previous :func:`analyse` result. Worth passing while
-            focusing: re-measuring every frame makes the preview shimmer as the
-            estimated base wanders with the grain.
+    Pass ``measured`` to reuse a previous :func:`analyse` -- re-measuring every
+    frame makes the preview shimmer as the estimated base wanders with grain.
     """
     if bgr8.dtype != np.uint8:
         raise TypeError(f"invert_preview expects uint8, got {bgr8.dtype}")
@@ -486,11 +363,9 @@ def invert_raw(
 def invert_pq(
     pq_rgb16: np.ndarray, params: FilmParams, measured: dict | None = None
 ) -> np.ndarray:
-    """Invert a 16-bit PQ-encoded RGB array -- a Canon HEIF -- to 16-bit sRGB.
+    """Invert a 16-bit PQ RGB array -- a Canon HEIF -- to 16-bit sRGB.
 
-    Identical to :func:`invert_raw` but for the input transfer, which is PQ
-    rather than linear. Stays 16-bit: the source is 10-bit, and the inversion
-    stretches its range hard enough that 8 bits would band.
+    :func:`invert_raw` with a PQ input transfer instead of a linear one.
     """
     if pq_rgb16.dtype != np.uint16:
         raise TypeError(f"invert_pq expects uint16, got {pq_rgb16.dtype}")

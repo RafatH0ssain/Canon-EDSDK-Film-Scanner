@@ -1,13 +1,12 @@
 """Focus peaking: highlight the sharpest edges.
 
-Computed here rather than read from the camera. EDSDK's live-view stream
-carries the image only, without the camera's own overlays, and the body's
-peaking appears in manual focus while EDSDK's focus drive needs autofocus mode.
-Doing it in software means remote focus and a peaking overlay work at once.
+In software, not the camera's own: EDSDK's stream carries no overlays, and the
+body's peaking needs manual focus while EDSDK's focus drive needs autofocus.
+Doing it here means remote focus and peaking work at once.
 
-Peaking runs at native resolution, before any loupe magnification.
-Nearest-neighbour enlargement leaves flat blocks whose only edges are block
-boundaries, so peaking after zoom gets sparser the further you zoom in.
+Runs at native resolution, before the loupe. Nearest-neighbour enlargement
+leaves flat blocks whose only edges are block boundaries, so peaking after zoom
+would get sparser the further you zoom in.
 """
 
 from __future__ import annotations
@@ -17,11 +16,10 @@ import numpy as np
 
 DEFAULT_PEAK_COLOR = (0, 0, 255)  # BGR
 
-# Edge-strength thresholds in Scharr-magnitude units, at each end of the
-# sensitivity range. These are absolute rather than percentiles of the frame's
-# own edge strengths: a percentile marks a fixed fraction of pixels by
-# construction, so it reports the same coverage on a sharp frame as on mush.
-# Calibrated against synthetic negatives and real EOS R7 live-view frames.
+# Scharr-magnitude thresholds at each end of the sensitivity range. Absolute,
+# not percentiles of the frame's own edges: a percentile marks a fixed fraction
+# of pixels by construction, reporting the same coverage on mush as on a sharp
+# frame. Calibrated on synthetic negatives and real R7 frames.
 _MAX_THRESHOLD = 1200.0
 _MIN_THRESHOLD = 150.0
 

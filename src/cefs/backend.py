@@ -1,14 +1,11 @@
 """The contract every camera backend implements.
 
-Defined before either implementation, and imported by both, so the mock and the
-real SDK answer to the same interface rather than the mock quietly growing into
-whatever shape the SDK code happened to need.
+Defined before either implementation and imported by both, so the mock cannot
+quietly grow into whatever shape the SDK code happened to need.
 
-Worth remembering what a mock can and cannot prove: it demonstrates internal
-consistency, never correctness. In the sibling CCAPI project every significant
-bug passed a green test suite first, because the mock had been built from the
-same misunderstanding as the code. Treat agreement between backend and mock as
-necessary, not sufficient.
+A mock proves internal consistency, never correctness: in the sibling CCAPI
+project every significant bug passed a green suite first, because the mock had
+been built from the same misunderstanding as the code.
 """
 
 from __future__ import annotations
@@ -30,11 +27,10 @@ class CameraInfo:
 
 @dataclass(frozen=True)
 class Capabilities:
-    """What this body actually supports, asked rather than assumed.
+    """What this body supports, asked rather than assumed.
 
-    Capability detection over model checks: a body is asked what it will let us
-    do, and the UI hides what is unavailable. A capability reported missing is
-    diagnosable; one silently bound to the wrong thing is not.
+    A capability reported missing is diagnosable; one silently bound to the
+    wrong thing is not.
     """
 
     focus_drive: bool = False
@@ -54,11 +50,10 @@ class CameraError(RuntimeError):
 
 @runtime_checkable
 class CameraBackend(Protocol):
-    """A camera, real or fake.
+    """A camera, real or fake. Safe to call from any thread.
 
-    Implementations must be safe to call from any thread. The EDSDK backend
-    achieves that by owning a dedicated thread and forwarding work to it; the
-    mock simply has no thread affinity to respect.
+    The EDSDK backend achieves that by owning a thread and forwarding work to
+    it; the mock has no thread affinity to respect.
     """
 
     def start(self) -> None:
@@ -79,9 +74,8 @@ class CameraBackend(Protocol):
     def settle_delay_s(self) -> float:
         """Seconds waited before firing, so the rig can stop vibrating.
 
-        Settable while connected: it is read at the moment of capture, and a
-        user who has just nudged the copy stand should not have to reconnect to
-        lengthen it.
+        Settable while connected -- it is read at the moment of capture, so
+        lengthening it should not need a reconnect.
         """
 
     @settle_delay_s.setter
@@ -91,20 +85,15 @@ class CameraBackend(Protocol):
         """Newest live-view frame as JPEG bytes, or ``None`` if none yet."""
 
     def drive_focus(self, direction: str, steps: int = 1, size: int = 2) -> None:
-        """Drive focus.
+        """Drive focus ``"near"`` or ``"far"``; ``size`` 1 finest, 3 coarsest.
 
-        Args:
-            direction: ``"near"`` or ``"far"``.
-            steps: How many increments to send. More than one is usually needed:
-                a single step can move the lens by less than the frame noise.
-            size: 1 finest, 3 coarsest.
+        More than one step is usually needed: a single one can move the lens by
+        less than the frame noise.
         """
 
     def capture(self, destination_dir: Path) -> list[Path]:
         """Fire the shutter and download everything it produced.
 
-        Returns a list because one release can write more than one file: with
-        the camera set to RAW+JPEG it sends a separate transfer for each. The
-        originals are always kept -- inversion and any other processing write
-        new files alongside them.
+        A list because one release can write several files -- RAW+JPEG sends a
+        transfer for each. Originals are always kept; processing writes beside.
         """

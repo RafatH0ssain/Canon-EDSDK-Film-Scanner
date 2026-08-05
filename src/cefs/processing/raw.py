@@ -1,16 +1,12 @@
-"""RAW decoding, via rawpy/LibRaw.
+"""RAW decoding via rawpy/LibRaw, because EDSDK cannot do it.
 
-ROADMAP.md v0.3 hoped EDSDK could do this itself. It cannot -- measured, not
-assumed: ``EdsGetImage`` returns ``NOT_SUPPORTED`` for every target type on a
-CR3, while working fine on JPEG. See :mod:`cefs.edsdk.decode` for the full
-matrix. rawpy decodes the same file to the sensor's full 6984x4660 at 16 bits.
+Measured, not assumed: ``EdsGetImage`` returns ``NOT_SUPPORTED`` for every
+target on a CR3 while working on JPEG. See :mod:`cefs.edsdk.decode`.
 
-The postprocessing options here matter more than they look. Film inversion needs
-**linear** data: the pipeline in :mod:`cefs.processing.film` takes a reciprocal,
-which is only meaningful before any tone curve has been applied. Every default
-that would make a RAW look nice as a photograph -- auto brightness, sRGB gamma,
-colour-space conversion -- destroys exactly the relationship inversion depends
-on, so all of them are turned off.
+The postprocessing options matter more than they look. Inversion takes a
+reciprocal, which is only meaningful on linear data, so every default that
+would make a RAW look nice -- auto brightness, gamma, colour conversion --
+destroys the relationship it depends on and is turned off.
 """
 
 from __future__ import annotations
@@ -19,8 +15,8 @@ from pathlib import Path
 
 import numpy as np
 
-#: Extensions rawpy handles for Canon bodies. Checked before opening so an
-#: unsupported file gives a clear message rather than a LibRaw error.
+#: Checked before opening, so an unsupported file gives a clear message
+#: rather than a LibRaw error. CRAW lives inside .cr3 and needs nothing extra.
 RAW_EXTENSIONS = {".cr2", ".cr3", ".crw"}
 
 
@@ -33,19 +29,10 @@ def is_raw(path: Path | str) -> bool:
 
 
 def decode_raw(path: Path | str, half: bool = False) -> np.ndarray:
-    """Decode a Canon RAW file to a 16-bit linear RGB array.
+    """Decode a Canon RAW to a 16-bit **linear** RGB array.
 
-    Args:
-        path: The RAW file.
-        half: Decode at half resolution. Roughly 4x faster and plenty for
-            choosing inversion parameters before committing to a full render.
-
-    Returns:
-        ``uint16`` array ``(H, W, 3)`` in RGB order, **linear** -- no gamma, no
-        auto-brightness, camera white balance applied.
-
-    Raises:
-        RawUnavailable: If rawpy is missing or the file will not decode.
+    No gamma, no auto-brightness, camera white balance applied. ``half`` decodes
+    at half resolution, roughly 4x faster.
     """
     path = Path(path)
     try:
@@ -64,15 +51,12 @@ def decode_raw(path: Path | str, half: bool = False) -> np.ndarray:
         with rawpy.imread(str(path)) as raw:
             return raw.postprocess(
                 output_bps=16,
-                # The camera's own white balance. A film base is a strong
-                # colour cast, and auto white balance would try to correct it
-                # away -- destroying the very thing the mask division measures.
+                # Camera WB, not auto: auto would try to correct away the film
+                # base, which is the very thing the mask division measures.
                 use_camera_wb=True,
                 # No auto-brightness: it rescales per image, so two frames of
                 # one roll would invert to different densities.
                 no_auto_bright=True,
-                # Linear. The reciprocal in the inversion is only valid on
-                # linear data.
                 gamma=(1, 1),
                 output_color=rawpy.ColorSpace.raw,
                 half_size=half,

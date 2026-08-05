@@ -1,12 +1,10 @@
 """Wires a camera backend to the processing pipeline for the web UI.
 
-This is the layer that owns the transport. The backend hands it JPEG bytes; it
-decodes, applies the view options, re-encodes, and yields frames for the MJPEG
-stream. It holds the view state the UI manipulates.
+Owns the transport and the view state: the backend hands over JPEG bytes, this
+decodes, applies the view options, re-encodes and yields the MJPEG stream.
 
-The pipeline runs on whichever thread is serving the stream, never on the camera
-thread -- the camera thread must stay free to pump messages, and blocking it on
-image processing would stall event delivery.
+The pipeline runs on whichever thread serves the stream, never the camera
+thread, which must stay free to pump messages or events stop arriving.
 """
 
 from __future__ import annotations
@@ -54,43 +52,19 @@ class ViewState:
     peaking: bool = False
     peaking_sensitivity: float = 0.5
 
-    #: "film" is the real v0.3 pipeline; "linear" is the v0.1 flip, kept so the
-    #: difference can be seen side by side; "off" shows the negative.
+    #: "film" is the real pipeline, "linear" the plain flip kept for comparison,
+    #: "off" shows the negative.
     inversion: str = "film"
 
 
-#: Focus steps sent per keypress, as ``(SDK step size, how many)``.
+#: Focus per keypress, as ``(SDK step size, how many)``. Latency 0.03 / 0.12 /
+#: 0.49 s. Confirmed on hardware; the user calls the fine step "phenomenal".
 #:
-#: ``fine`` is one step of the SDK's smallest size -- the finest move EDSDK
-#: offers, so nothing below it is reachable.
-#:
-#: A note on how these were arrived at, because the obvious method failed.
-#: Larger steps were calibrated by measuring mean absolute frame difference per
-#: press against the frame-to-frame noise floor, which correctly caught a first
-#: attempt that moved the lens only 1.1x the floor -- invisible. But that metric
-#: is blind at the fine end: on an EOS R7 every option from 1x1 to 2x8 measured
-#: between 1.0x and 1.7x the floor, indistinguishable from each other and from
-#: noise.
-#:
-#: The metric averages the whole frame; a person judging focus is looking
-#: through an 8x loupe at a sharpness readout, and can resolve moves far smaller
-#: than that average can. So the fine end is set by what is useful in the hand,
-#: not by what the difference metric can see, and ``fine`` is simply the
-#: smallest step the SDK has.
-#:
-#: Measured, for the sizes the metric *can* resolve (noise floor ~2.3-3.6):
-#:
-#: ========  =============  ========  =========  ========
-#: name      size x steps   travel    vs floor   latency
-#: ========  =============  ========  =========  ========
-#: fine      1 x 1          --        below the metric   0.03 s
-#: medium    2 x 6          ~6        ~2.5x      0.12 s
-#: coarse    3 x 20         23.0      6.4x       0.49 s
-#: ========  =============  ========  =========  ========
-#:
-#: Coarse travels 2.5x further than medium while measuring only 1.3x higher:
-#: the difference metric saturates once the image is thoroughly defocused, just
-#: as it goes blind at the other end.
+#: Do not re-tune these against a whole-frame difference metric. That is how
+#: they were first calibrated, and it went blind at the fine end -- every option
+#: from 1x1 to 2x8 measured within noise of the others. ``fine`` is the SDK
+#: minimum because that is what is useful under an 8x loupe, not because a
+#: metric said so.
 FOCUS_STEPS = {
     "fine": (1, 1),
     "medium": (2, 6),
@@ -110,14 +84,11 @@ class Session:
         self._last_error: str = ""
         self._best_sharpness: float = 0.0
         self.film = FilmParams(mode=config.film.mode)
-        # Measuring the film base costs ~30 ms and wanders slightly with grain,
-        # so it is measured on demand rather than per frame. Re-measured when
-        # the user asks, or when a parameter that changes its meaning changes.
+        # ~30 ms, and it wanders with grain, so it is measured on demand
+        # rather than per frame.
         self._measured: dict | None = None
-        # Where the user pointed at the rebate, in normalised coordinates. The
-        # region is what travels to the developed file, not the value sampled
-        # from it -- live view and a capture are on different linear scales.
-        # See cefs.processing.develop._measure.
+        # The region, not the value sampled from it: live view and a capture
+        # are on different linear scales. See develop._measure.
         self._base_region: tuple[float, float, float, float] | None = None
 
     # --- lifecycle ----------------------------------------------------------
@@ -239,16 +210,14 @@ class Session:
         )
 
     def update_capture(self, **changes) -> dict:
-        """Change capture settings from the UI.
+        """Change capture settings from the UI, for this session only.
 
-        Every setting is validated here rather than at the shutter. A save
-        location that cannot be created, or a compression name with a typo in
-        it, should fail while you are still looking at the control -- not
-        halfway through developing a 32 MP frame.
+        Validated here, not at the shutter: an uncreatable save location or a
+        typo in a compression name should fail while you are looking at the
+        control, not halfway through developing a 32 MP frame.
 
-        These changes last for the session. ``config.yaml`` is not rewritten:
-        the file holds the path to a licensed SDK, and a UI that edited it
-        would be a UI that could corrupt it.
+        ``config.yaml`` is never rewritten -- it holds the path to a licensed
+        SDK, and a UI that edited it could corrupt it.
         """
         capture = self._config.capture
         changes = {k: v for k, v in changes.items() if v is not None}
@@ -266,8 +235,7 @@ class Session:
                 raise ValueError(f"Cannot use that save location: {exc}") from exc
 
         if "settle_delay_s" in changes:
-            # 60 s is already far longer than any copy stand needs; the cap is
-            # only there so a stray keystroke cannot appear to hang the app.
+            # Capped only so a stray keystroke cannot appear to hang the app.
             capture.settle_delay_s = max(0.0, min(float(changes["settle_delay_s"]), 60.0))
             backend = self._backend
             if backend is not None:
@@ -276,8 +244,8 @@ class Session:
         if "develop_positives" in changes:
             capture.develop_positives = bool(changes["develop_positives"])
 
-        # The three output settings are validated together, by the same code
-        # that will use them, and rolled back as a group if any is bad.
+        # Validated together by the code that will use them, rolled back as a
+        # group if any is bad.
         output_keys = ("positive_format", "tiff_compression", "jpeg_quality")
         if any(key in changes for key in output_keys):
             snapshot = {key: getattr(capture, key) for key in output_keys}
@@ -310,8 +278,7 @@ class Session:
             "sidecar": roll.sidecar,
             "fields": list(naming.FIELDS),
         }
-        # Show the user the answer rather than the rule. A template typo should
-        # be visible before the roll, not discovered after it.
+        # Show the answer, not the rule: a typo should be visible before the roll.
         try:
             status["example"] = (
                 naming.example(roll.template, roll=roll.roll, frame=roll.frame,
@@ -328,8 +295,8 @@ class Session:
     def update_roll(self, **changes) -> dict:
         """Change the roll's label, frame number or metadata.
 
-        Validated here so a bad template is refused while you are looking at
-        the field, rather than at the shutter with a frame already exposed.
+        Validated here, so a bad template is refused while you are looking at
+        the field rather than at the shutter with a frame already exposed.
         """
         roll = self._config.roll
         changes = {k: v for k, v in changes.items() if v is not None}
@@ -364,11 +331,10 @@ class Session:
         return self.roll_status()
 
     def next_roll(self, label: str | None = None) -> dict:
-        """Start a new roll: reset the frame counter and clear the metadata.
+        """Start a new roll: reset the frame counter and clear the notes.
 
-        Without a label, the trailing number in the current one is incremented
-        -- ``Roll014`` becomes ``Roll015`` -- which is the whole point of a
-        button rather than three fields to edit by hand.
+        Without a label the trailing number increments, ``Roll014`` to
+        ``Roll015`` -- the point of a button rather than fields to edit by hand.
         """
         roll = self._config.roll
         if label is None:
@@ -378,8 +344,7 @@ class Session:
                 label = f"{head}{int(digits) + 1:0{len(digits)}d}{tail}"
             else:
                 label = f"{roll.roll}-2"
-        # The stock and developer usually carry over to the next roll; the
-        # notes are about the roll that just finished, so they do not.
+        # Stock and developer carry over; the notes were about the last roll.
         return self.update_roll(roll=label, frame=1, notes="")
 
     def update_view(self, **changes) -> dict:
@@ -406,17 +371,10 @@ class Session:
     def process(self, payload: bytes) -> bytes:
         """Apply the current view options to one JPEG frame.
 
-        Order matters, and not obviously:
-
-        Peaking is *measured* on the full-resolution frame before the loupe
-        crops it, because nearest-neighbour magnification leaves flat blocks
-        whose only edges are block boundaries -- peaking computed after zoom
-        gets sparser the further you zoom in, which is exactly backwards.
-
-        It is *applied* after inversion, because the overlay is a fixed colour.
-        Marking pixels red and then inverting would turn every one of them
-        cyan. So the mask is carried through the same crop as the image and
-        painted on at the end.
+        Order matters. Peaking is *measured* before the loupe crops, because
+        nearest-neighbour magnification leaves flat blocks whose only edges are
+        block boundaries. It is *applied* after inversion, because marking
+        pixels red and then inverting would turn them all cyan.
         """
         frame = decode_jpeg(payload)
         view = self.view
@@ -438,11 +396,7 @@ class Session:
         return encode_jpeg(frame)
 
     def _apply_inversion(self, frame):
-        """Apply whichever inversion the view asks for.
-
-        Both the preview and any saved output go through
-        :func:`cefs.processing.film.invert_preview`, so they cannot drift apart.
-        """
+        """Apply whichever inversion the view asks for."""
         view = self.view
         if not view.invert or view.inversion == "off":
             return frame
@@ -455,8 +409,8 @@ class Session:
     def remeasure_film_base(self, region=None) -> dict:
         """Re-measure the film base, optionally from a region of the frame.
 
-        Pointing at the rebate is far more reliable than the automatic estimate,
-        which assumes the densest part of the image approaches base density.
+        Pointing at the rebate beats the automatic estimate, which assumes the
+        densest part of the image approaches base density.
         """
         backend = self._backend
         if backend is None:
@@ -471,8 +425,8 @@ class Session:
             self._base_region = tuple(float(v) for v in region)
             self.film = self.film.replace(base=sample_base(linear, region=self._base_region))
         else:
-            # A reset has to clear both, and `replace(base=None)` cannot: it
-            # drops None, so it would keep the base it claims to be clearing.
+            # `replace(base=None)` cannot do this: it drops None and would
+            # keep the base it claims to clear.
             self._base_region = None
             self.film = self.film.without_base()
         self._measured = analyse(linear, self.film)
@@ -485,7 +439,7 @@ class Session:
             changes["channel_gain"] = tuple(float(v) for v in changes["channel_gain"])
         self.film = self.film.replace(**changes)
         # Mode and base change what the measurement means; the tonal controls
-        # only change the curve built from it, so they need no re-analysis.
+        # only reshape the curve built from it.
         if {"mode", "base", "auto_balance", "highlight_percentile"} & set(changes):
             self._measured = None
         return self.film_status()
@@ -512,12 +466,10 @@ class Session:
         }
 
     def measure_sharpness(self) -> dict:
-        """Relative sharpness of whatever the user is currently looking at.
+        """Relative sharpness of whatever is on screen.
 
-        Measures the loupe's region when the loupe is up, so the number matches
-        the magnified view rather than the whole frame. Relative only: the
-        absolute value depends on subject and exposure, so it is meaningful
-        while turning focus back and forth and not between sessions.
+        The loupe's region when the loupe is up, so the number matches the view.
+        Meaningful while turning focus, not between sessions.
         """
         backend = self._backend
         if backend is None:
@@ -580,8 +532,7 @@ class Session:
                 try:
                     processed = self.process(payload)
                 except DecodeError:
-                    # Partial frames happen; skipping one beats tearing the
-                    # stream down.
+                    # Partial frames happen; skip one rather than tear the stream down.
                     processed = None
                 if processed is not None:
                     yield (
@@ -628,15 +579,14 @@ class Session:
                     entry["positive"] = positive.name
                     entry["positive_bytes"] = positive.stat().st_size
                 except DevelopError as exc:
-                    # A failed development must not lose the capture itself --
-                    # the original is the one thing that cannot be regenerated.
+                    # A failed development must not lose the capture itself.
                     entry["error"] = str(exc)
                     logger.error("Could not develop %s: %s", path.name, exc)
             files.append(entry)
 
         self._write_sidecar(paths, frame, files, when)
-        # Advance even if renaming or the sidecar failed: the shutter fired, so
-        # that frame number is spent, and reusing it would collide next time.
+        # Advance even if renaming or the sidecar failed: the shutter fired,
+        # so that frame number is spent.
         self._config.roll.frame = frame + 1
 
         record = {
@@ -655,14 +605,10 @@ class Session:
     def _file_into_roll(self, path: Path, output_dir: Path, frame: int, when) -> Path:
         """Rename one downloaded capture into the roll's structure.
 
-        Renaming after the download rather than telling the camera where to put
-        it keeps the SDK layer out of this entirely -- that code has to pump
-        messages and marshal transfers, and is the last place to add a string
-        template.
-
-        A failure here returns the file where it already is. A capture under an
-        unhelpful name is a nuisance; a capture that was moved somewhere
-        unknown, or lost, is not recoverable.
+        After the download, not by telling the camera where to write: that code
+        pumps messages and marshals transfers and is the last place for a string
+        template. A failure leaves the file where it is -- an unhelpful name is
+        a nuisance, a lost capture is not recoverable.
         """
         roll = self._config.roll
         if not roll.template.strip():
@@ -688,7 +634,7 @@ class Session:
         return destination
 
     def _write_sidecar(self, paths: list[Path], frame: int, files: list[dict], when) -> None:
-        """Record the frame in roll.json. Never raises -- it is only metadata."""
+        """Record the frame in roll.json. Never raises: it is only metadata."""
         roll = self._config.roll
         if not roll.sidecar or not paths:
             return
@@ -699,8 +645,7 @@ class Session:
             notes=roll.notes,
             date=roll.date,
         )
-        # Frames can land in more than one folder if the template puts them
-        # there; each folder gets the sidecar describing what is in it.
+        # A template can spread frames over folders; each gets its own sidecar.
         by_folder: dict[Path, list[Path]] = {}
         for path in paths:
             by_folder.setdefault(path.parent, []).append(path)

@@ -1,16 +1,11 @@
-"""Image processing: pure functions over numpy arrays.
+"""Image processing: pure, stateless functions over numpy arrays.
 
-Nothing in this package touches the SDK, the network or the UI, and nothing here
-holds state. That is what lets the hard parts -- colour inversion above all --
-be developed and tested against synthetic fixtures with no camera attached.
+Nothing here touches the SDK, the network or the UI, so it can be tested against
+synthetic fixtures with no camera. Frames are ``uint8`` ``(H, W, 3)`` in **BGR**
+unless a function says otherwise.
 
-Frames are OpenCV-convention ``uint8`` arrays of shape ``(H, W, 3)`` in **BGR**
-order unless a function says otherwise.
-
-A note on speed, which newly matters here. Over Wi-Fi the sibling project
-received 3.98 fps, so its 14.3 ms pipeline was free. EDSDK delivers ~60 fps --
-a ~17 ms budget per frame -- so this layer is now close to being the bottleneck
-rather than comfortably clear of it.
+Speed matters here: EDSDK delivers ~60 fps, a ~17 ms budget, and the pipeline
+measures 13-19 ms. It is close to the bottleneck, not comfortably clear of it.
 """
 
 from cefs.processing.codec import decode_jpeg, encode_jpeg

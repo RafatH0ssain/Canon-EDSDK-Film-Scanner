@@ -1,17 +1,12 @@
-"""JPEG encode/decode helpers.
-
-Isolated here so the rest of the processing layer deals only in arrays, and so
-the live-view pipeline has exactly one place where compression settings live.
-"""
+"""JPEG encode/decode, so the rest of the processing layer deals only in arrays."""
 
 from __future__ import annotations
 
 import cv2
 import numpy as np
 
-# Quality for frames sent to the browser. High enough that the loupe is honest
-# about focus -- compression artefacts at low quality look a lot like grain,
-# which would defeat the point of the magnified view.
+# High enough that the loupe stays honest: low-quality artefacts look like
+# grain, which would defeat the point of the magnified view.
 PREVIEW_JPEG_QUALITY = 88
 
 
@@ -22,10 +17,8 @@ class DecodeError(ValueError):
 def decode_jpeg(payload: bytes) -> np.ndarray:
     """Decode JPEG bytes to a BGR array.
 
-    Raises:
-        DecodeError: If the payload is not a decodable image. Live-view streams
-            do occasionally deliver a partial frame; callers should skip those
-            rather than tearing down the session.
+    Live view occasionally delivers a partial frame; skip those rather than
+    tearing the session down.
     """
     if not payload:
         raise DecodeError("Empty payload.")
@@ -37,11 +30,7 @@ def decode_jpeg(payload: bytes) -> np.ndarray:
 
 
 def encode_jpeg(frame: np.ndarray, quality: int = PREVIEW_JPEG_QUALITY) -> bytes:
-    """Encode a BGR array as JPEG bytes.
-
-    Raises:
-        ValueError: If encoding fails.
-    """
+    """Encode a BGR array as JPEG bytes."""
     ok, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)])
     if not ok:
         raise ValueError("JPEG encoding failed.")

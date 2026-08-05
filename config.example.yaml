@@ -28,11 +28,8 @@ edsdk:
   library_path: ""
 
 liveview:
-  # Live view is the entire reason this project exists. These are starting
-  # points for the v0.0 measurement, not tuned values.
-  #
-  # Target frames per second for the frame pump. The real ceiling is whatever
-  # the camera and USB link deliver; this only caps how hard we poll.
+  # Frames per second the pump targets. The real ceiling is whatever the camera
+  # delivers -- ~60 on an R7 -- so this only caps how hard we poll.
   target_fps: 30
 
 capture:
