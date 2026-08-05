@@ -93,9 +93,11 @@ class CaptureConfig:
     # cefs.processing.develop.OutputOptions.
     positive_format: str = "auto"
 
-    # Lossless either way. LZW roughly halves a 16-bit TIFF -- measured 193.8
-    # -> 74.8 MB on a 32 MP frame -- for about two seconds of write time.
-    tiff_compression: str = "lzw"
+    # Lossless whichever is chosen. Deflate, not LZW: measured on two real
+    # 32 MP positives, LZW managed only 1.1-1.2x where deflate gave 2.4-2.6x.
+    # LZW is also what OpenCV writes when told nothing, so it was never the
+    # improvement it looked like.
+    tiff_compression: str = "deflate"
 
     jpeg_quality: int = 95
 

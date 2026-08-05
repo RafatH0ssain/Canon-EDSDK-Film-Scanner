@@ -133,8 +133,15 @@ positives agree on overall level within 1% and the HEIF carries about a quarter
 more tonal spread.
 
 Container, TIFF compression and JPEG quality are all settable from the UI or
-`config.yaml`. TIFF defaults to LZW, which halves a 32 MP 16-bit positive from
-194 MB to 103 MB losslessly.
+`config.yaml`. TIFF defaults to **deflate**: measured on two real 32 MP
+positives it holds 2.4–2.6× losslessly (194 MB → 74–81 MB), where LZW manages
+only 1.1–1.2× on 16-bit continuous tone — and LZW is what OpenCV writes when
+given no setting at all, so it was never a choice worth making.
+
+If you keep the RAW and develop it elsewhere, turn positives off: set
+`capture.develop_positives: false` and the camera to RAW only, and a shot
+writes one ~35 MB `.CR3` and nothing else. The live preview still inverts, so
+focusing is unaffected.
 
 ## Honest limitations
 

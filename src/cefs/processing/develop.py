@@ -62,10 +62,24 @@ HEIF_EXTENSIONS = {".hif", ".heif", ".heic"}
 
 #: libtiff compression codes, as ``cv2.IMWRITE_TIFF_COMPRESSION`` wants them.
 #: All three are lossless -- verified by reading each back and comparing every
-#: pixel, not assumed from the format. Measured writing a real 6960x4640 16-bit
-#: positive: none 193.8 MB in 0.13 s, LZW 103.0 MB in 1.89 s, deflate 75.5 MB
-#: in 4.86 s. LZW is the default: it halves the file for under two seconds,
-#: where deflate's further 27% costs another three.
+#: pixel, not assumed from the format.
+#:
+#: Measured on two real 32 MP positives off an R7, one developed from HEIF and
+#: one from the CR3 of the same frame:
+#:
+#: ========  ==================  ==============  ========
+#: mode      size                ratio           write
+#: ========  ==================  ==============  ========
+#: none      193.8 / 195.3 MB    1.00x           0.15 s
+#: lzw       161.6 / 177.6 MB    1.10-1.20x      2.3 s
+#: deflate   74.1 / 80.9 MB      2.41-2.61x      5 s
+#: ========  ==================  ==============  ========
+#:
+#: Deflate is the default, and the numbers are why. LZW barely compresses
+#: 16-bit continuous tone, and its ratio swings with the frame -- another
+#: negative came out at 1.9x -- where deflate stays near 2.5x. LZW is also what
+#: OpenCV writes when given no compression parameter at all, so choosing it
+#: explicitly would have changed nothing about the files this program produces.
 TIFF_COMPRESSION = {"none": 1, "lzw": 5, "deflate": 8}
 
 #: How the positive is chosen when the format is left on "auto".
@@ -85,7 +99,7 @@ class OutputOptions:
     format: str = "auto"
 
     #: See :data:`TIFF_COMPRESSION`. Lossless whichever is chosen.
-    tiff_compression: str = "lzw"
+    tiff_compression: str = "deflate"
 
     jpeg_quality: int = 95
 

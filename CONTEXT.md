@@ -45,14 +45,29 @@ back and comparing every pixel. LZW is the default.
 
 ---
 
-## 1c. Not yet verified on hardware
+## 1c. Verified on the real camera
 
-Everything below works against files and the mock, and none of it has met a
-camera. `TESTING.md` §7b walks the user through it.
+A 25-check walkthrough was run against the R7 over the real app — connect, live
+view, all six capture settings, format forcing, compression, develop-on/off,
+the base region, focus, sharpness, disconnect. **25/25 passed.** HEIF is now
+confirmed straight off a shutter release, not just from files on disk.
 
-- HEIF developed only from files already on disk, never off a shutter release.
-- Every capture setting: save location, settle delay, format, compression.
-- Fine focus steps reduced to the SDK minimum — still unretested, from before.
+Two things it corrected:
+
+- **The camera is on RAW + HEIF**, not RAW+JPEG as the old handoff said. Each
+  release wrote four files (34.7 MB CR3, 15.7 MB HIF, and a positive for each)
+  — 390 MB a shot, which is how 9 frames became 2.9 GB.
+- **`cv2.imwrite` already defaults to LZW.** Positives were never uncompressed,
+  so task 3's premise was wrong; the real gain was deflate. See §5.
+
+Still unretested: fine focus steps at the SDK minimum, from before this
+session. `TESTING.md` §7b walks the settings through by hand in the browser —
+the API path is covered, the visual one is not.
+
+**The user's `config.yaml` now has `develop_positives: false`.** They keep the
+RAW and develop elsewhere, so a positive per capture was 340 MB a shot they
+would delete. With the camera on RAW only, a shot writes one ~35 MB `.CR3` and
+nothing else. Do not assume positives are on when reading their reports.
 
 ---
 
@@ -153,7 +168,8 @@ quote Canon's prose. Function and constant *names* in code are fine.
 | **EDSDK RAW decode** | **Cannot decode CR3.** `EdsGetImage` → `NOT_SUPPORTED` for every target. Works on JPEG. `EdsGetImageInfo` *lies* — reports 1620×1080/16-bit for a CR3, which is an embedded preview. rawpy is used instead. |
 | **R7 HEIF** | 6960×4640, **10-bit**, PQ (ST 2084) over BT.2020, full range. Codes arrive left-shifted into 16 bits (gap 64). Linear range of a real negative: **0.016–0.066** (160–660 cd/m²) |
 | Develop, end to end | HEIF **3.8–4.0 s**, CR3 **4.9 s** (32 MP, LZW) |
-| TIFF write, 32 MP 16-bit | none **194 MB / 0.13 s** · LZW **103 MB / 1.89 s** · deflate **75.5 MB / 4.86 s**. All lossless, verified pixel-for-pixel |
+| TIFF write, 32 MP 16-bit | none **194 MB / 0.15 s** · LZW **162–178 MB (1.1–1.2×) / 2.3 s** · deflate **74–81 MB (2.4–2.6×) / ~5 s**. All lossless, verified pixel-for-pixel. **OpenCV already writes LZW when given no parameter**, so choosing it explicitly changes nothing — deflate is the default for that reason. LZW's ratio swings with the frame (one negative gave 1.9×); deflate stays near 2.5× |
+| Capture cycle, RAW+HEIF | ~15 s per shot with two positives; ~3 s with positives off. Download **26 MB/s** measured, above the older 10–17 figure |
 | PQ decoded as sRGB | 3.1% mean error vs 0.9% for the correct path, on a real negative's range; **31×** on a 30× range. The 0.9% is the 10-bit quantisation floor (0.98% with no file at all) |
 | HEIF vs CR3, same frame | positives agree on level (mean 0.455 vs 0.445); HEIF carries **~23% more tonal spread** (std 0.292 vs 0.237), consistent with the camera's own rendering being baked in |
 
