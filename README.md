@@ -4,9 +4,9 @@ Digitize film negatives with a Canon camera on a copy stand — focusing, framin
 
 Built on [EDSDK](https://developercommunity.usa.canon.com/), Canon's EOS Digital SDK. Works with black-and-white **and** colour negatives.
 
-> **Status: v0.2 works on real hardware.** Live view, a focus loupe, remote focus stepping, focus peaking, a sharpness readout, and remote capture with a settle delay — all verified on an EOS R7. The premise that justified the project is measured and confirmed: **59.79 fps / 17 ms at 960×640** over USB, against 3.98 fps / 251 ms for the same frame size over Wi-Fi. Details in [spike/README.md](spike/README.md).
+> **Status: works on real hardware.** Live view, a focus loupe, remote focus stepping, focus peaking, a sharpness readout, and remote capture with a settle delay — all verified on an EOS R7. The premise that justified the project is measured and confirmed: **59.79 fps / 17 ms at 960×640** over USB, against 3.98 fps / 251 ms for the same frame size over Wi-Fi. Details in [spike/README.md](spike/README.md).
 >
-> Colour negatives still preview cyan — proper inversion is v0.3. See [ROADMAP.md](ROADMAP.md).
+> Colour and black-and-white negatives both invert properly, in the preview and in the file written after a capture.
 
 ---
 
@@ -115,15 +115,32 @@ control — it can fire your shutter.
 | Camera-side live-view zoom | **not available** over EDSDK; the software loupe is the only magnification |
 | Electronic shutter | **not selectable** over EDSDK — set Shutter mode in the camera menu |
 
+## Capture formats
+
+Every format an EOS body writes is developed into a positive, chosen by the
+file rather than by a setting:
+
+| Format | Decoder | Positive |
+|---|---|---|
+| RAW `.CR3`/`.CR2`, including CRAW | LibRaw — EDSDK cannot decode CR3, measured | 16-bit TIFF |
+| HEIF `.HIF` | pillow-heif, 10-bit, PQ transfer read from the file's own profile | 16-bit TIFF |
+| JPEG | OpenCV | JPEG |
+
+CRAW needs no separate handling: it is a compression mode inside the `.CR3`
+container. A HEIF is rendered in the camera where a RAW is not, so the two
+develop close but not identically — measured on one frame shot both ways, the
+positives agree on overall level within 1% and the HEIF carries about a quarter
+more tonal spread.
+
+Container, TIFF compression and JPEG quality are all settable from the UI or
+`config.yaml`. TIFF defaults to LZW, which halves a 32 MP 16-bit positive from
+194 MB to 103 MB losslessly.
+
 ## Honest limitations
 
-- **Colour negatives preview cyan.** v0.1 inversion is a plain linear flip,
-  which is fine for black & white but leaves colour film with the inverse of
-  its orange mask. Doing it properly is v0.3 and needs a real pipeline.
-- **The preview is inverted; the saved file is not.** Captures are always kept
-  exactly as the camera wrote them. Inverting captured files is v0.3.
 - **Corner-by-corner alignment checking is not built yet.** The per-region
-  sharpness it needs is present and tested; the checker itself is v0.4.
+  sharpness it needs is present and tested.
+- **Captures keep the camera's filenames.** No roll or frame numbering yet.
 - **Windows only so far.** The message pump is platform-specific and isolated,
   so macOS and Linux remain possible, but neither is done.
 

@@ -9,18 +9,17 @@ only ever proves the code agrees with itself.
 
 ---
 
-## Read this first — two things that will bite you
+## Read this first
 
-**1. Do not set the camera to RAW+JPEG yet.**
+**1. Any image quality setting is now fine.**
 
-You chose RAW+JPEG as the capture format, but **the download path does not handle
-it yet**. The camera sends one transfer event per file, and the current code
-takes only the first and discards the rest. You would silently get one file per
-shot, and possibly not the one you expected.
+RAW+JPEG works — both files download, and both get a positive. So does RAW
+alone, JPEG alone, and HEIF, including the `.HIF` files already sitting in
+`captures/` from earlier sessions. CRAW needs nothing special: it is a
+compression mode inside the `.CR3`, so it goes down the same RAW path.
 
-For this test, set the camera to a **single format** — RAW *or* JPEG, not both.
-JPEG is the easier choice since nothing inverts captured files yet anyway.
-I'll fix the dual-file path before you shoot a real roll.
+Untested on hardware: HEIF has only been developed from files on disk, never
+straight off a shutter release. If you shoot one, say whether it arrives.
 
 **2. Restart the server and hard-refresh the browser.**
 
@@ -45,7 +44,7 @@ Then **Ctrl+Shift+R** in the browser at <http://127.0.0.1:8000/>.
   the app reports "camera menu" rather than pretending. On a copy stand,
   mechanical shutter shock is a real cause of soft scans.
 - **Auto power-off → disabled.**
-- Image quality → **a single format** (see the warning above).
+- Image quality → whatever you like, including RAW+JPEG.
 - Lens **AF/MF switch → AF**, or focus stepping will be unavailable (and the app
   will tell you why).
 
@@ -216,15 +215,12 @@ roughly equal on colour film (that would mean it didn't sample the base).
 ❌ **Report if:** raising contrast makes the image *flatter* — I had that bug
 (the exponent was inverted) and fixed it, so I'd like confirmation on real film.
 
-> **What is honestly missing:** this affects the **preview only**. Captured files
-> are saved exactly as the camera wrote them. Inverting downloaded files is the
-> next thing I'll build.
+> These settings drive the saved positive too, not just the preview. What you
+> judge here is what gets written after a capture.
 
 ---
 
 ## 7. Capture
-
-Check once more that the camera is on a **single** image format.
 
 - Note the **Settle delay** (1.5 s default).
 - Press <kbd>Space</kbd> or **Capture**.
@@ -233,12 +229,45 @@ Check once more that the camera is on a **single** image format.
 - A visible pause (the settle delay) before the shutter fires.
 - The file appears under **Downloaded** with size and elapsed time.
 - The file really exists in `captures/`.
+- Beside it, a `-positive` file, and the **Downloaded** list names it with its
+  size. On RAW+JPEG you get two captures and two positives.
 - Fire 3–4 more. Filenames never collide — the original is never overwritten.
 
 ❌ **Report if:** it hangs, the file never arrives, or two shots produce one
 file. Timing reference: a 14.6 MB HEIF took ~2.9 s including the 1.5 s settle.
 
-> If you shot RAW, expect ~2–3× longer for a 30 MB CR3.
+> If you shot RAW, expect ~2–3× longer for a 30 MB CR3. Developing adds a few
+> seconds on top: measured off-camera, a 32 MP HEIF takes ~3.8 s end to end and
+> a CR3 ~4.9 s.
+
+---
+
+## 7b. Capture settings
+
+New, and none of it has been on hardware yet — the whole section is worth a
+minute.
+
+- **Save to.** Type a different folder and press <kbd>Enter</kbd>. The
+  **Saving to** line underneath should show the absolute path it resolved to,
+  and the folder should appear on disk. Capture once and check the file landed
+  there. Then put it back to `captures`.
+- **Settle delay.** Drag it to 4 s and fire. The pause before the shutter
+  should visibly lengthen — it takes effect immediately, with no reconnect.
+- **Develop a positive beside each capture.** Untick, fire: capture only, no
+  positive. Tick it back.
+- **Positive format.** On *auto*, RAW and HEIF give a `.tif` and JPEG gives a
+  `.jpg`. Force **JPEG** and fire on RAW — you should get a small `.jpg`
+  instead of a 100 MB TIFF. Useful for a quick contact sheet.
+- **TIFF compression.** Fire the same frame on **none** and on **LZW** and
+  compare the sizes in the **Downloaded** list. Expect roughly half, for about
+  two extra seconds. Deflate is smaller again and noticeably slower.
+
+❌ **Report if:** a setting reports success but the file says otherwise — a
+wrong folder, a `.tif` when you asked for `.jpg`, or a size that did not change
+when compression did. A control that lies is worse than one that is missing.
+
+> Settings last for the session only. To make one permanent, put it in
+> `config.yaml` — see `config.example.yaml` for every field.
 
 ---
 

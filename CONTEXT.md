@@ -1,51 +1,90 @@
 # CONTEXT — handoff for the next session
 
-Read `CLAUDE.md` and `ROADMAP.md` first; they are the standing instructions and
-do not change. This file is the current state and what to do next.
+**`CLAUDE.md` and `ROADMAP.md` no longer exist** — both were deleted and added
+to `.gitignore`. There are currently no standing instructions beyond this file,
+and no written roadmap. That matters for task 1 below.
 
-**Status: v0.0–v0.3 built and verified on real hardware.** 115 tests pass.
-Everything is committed. Nothing is half-applied.
-
----
-
-## 1. Start here — the four tasks queued, in order
-
-### 1. HEIF support (blocks the user's current camera setting)
-The R7 is set to **RAW+JPEG**, but was on HEIF, and `.HIF` files still land in
-`captures/`. `cv2.imread` cannot read them in this OpenCV build, so developing a
-HEIF fails with a clear error while the original is kept.
-
-Add **`pillow-heif`** (ships wheels, bundles libheif) and route `.hif/.heif/.heic`
-through it in `src/cefs/processing/develop.py`. The decoder choice already
-branches on file type there; add a third branch. Keep the honest error for when
-the decoder is missing.
-
-The user asked for **all formats supported: HEIF, JPEG, RAW, CRAW**. Note CRAW is
-Canon's compressed RAW *inside* a `.CR3` container, so LibRaw already handles it —
-no separate work, but say so rather than letting them think it was missed.
-
-### 2. Capture settings UI (user asked for this explicitly)
-A section under **Capture** in `src/cefs/app/static/index.html` for:
-- **Save location** (currently only editable in `config.yaml`)
-- **Settle delay**
-- **Develop positives** on/off (`capture.develop_positives`)
-- Positive output format / compression
-
-Needs matching endpoints in `server.py` and setters in `session.py`. Config
-fields already exist in `src/cefs/config.py`.
-
-### 3. LZW-compress the positive TIFF
-A 16-bit 32 MP positive is **160 MB** uncompressed. `cv2.imwrite` with
-`IMWRITE_TIFF_COMPRESSION` (5 = LZW) roughly halves it losslessly.
-
-### 4. Filename templates
-The user wants configurable names. **Coordinate with ROADMAP v0.5**, which
-specifies structured naming, foldering and per-roll sidecar metadata — build it
-once, properly, rather than a throwaway now.
+**Status: tasks 1–3 of the previous handoff are done, plus a base-scale bug
+fix.** 153 tests pass (was 115). Verified against the real `.HIF` and `.CR3`
+files in `captures/`, but **not yet against a live camera** — see §2.
 
 ---
 
-## 2. Environment facts you will otherwise rediscover slowly
+## 1. The one task still queued
+
+### Filename templates — deferred, deliberately
+The user wants configurable names. The previous handoff said to coordinate this
+with the ROADMAP v0.5 spec (structured naming, foldering, per-roll sidecar
+metadata) — and that file is gone. Asked, and the user chose to **defer until
+they restate the spec**. Do not build a throwaway version in the meantime.
+
+---
+
+## 1b. What was built this session
+
+**HEIF, done properly.** `pillow-heif` added; `.hif/.heif/.heic` route through
+it in `develop.py`. The important discovery: a Canon body writes HEIF only in
+HDR PQ mode — measured on the R7 files, the NCLX profile says transfer
+characteristic **16 (SMPTE ST 2084)**, BT.2020 primaries, **10 bits**, arriving
+left-shifted into 16 (adjacent codes differ by exactly 64). Decoding it as sRGB
+would be a plausible-looking mistake, so the transfer is read from the file, not
+assumed. `pq_to_linear` and `invert_pq` live in `film.py`; the PQ EOTF composes
+into the same per-channel LUT the rest of the pipeline uses, so there is no
+second code path. CRAW needed nothing — it is a compression mode inside `.CR3`.
+
+**Capture settings UI.** Save location, settle delay, develop-positives,
+positive format, TIFF compression, JPEG quality — `POST /api/capture/settings`,
+validated in `Session.update_capture`, all under **Capture** in the panel.
+Session-scoped; `config.yaml` is never rewritten. Settle delay reaches a live
+backend through a new settable `settle_delay_s` property on both backends.
+
+**TIFF compression.** `none`/`lzw`/`deflate`, all verified lossless by reading
+back and comparing every pixel. LZW is the default.
+
+**The base-scale bug** (found while verifying, pre-existing, fixed — §3).
+
+---
+
+## 1c. Not yet verified on hardware
+
+Everything below works against files and the mock, and none of it has met a
+camera. `TESTING.md` §7b walks the user through it.
+
+- HEIF developed only from files already on disk, never off a shutter release.
+- Every capture setting: save location, settle delay, format, compression.
+- Fine focus steps reduced to the SDK minimum — still unretested, from before.
+
+---
+
+## 2. The base-scale bug, fixed
+
+Found while verifying HEIF, and it predates this session. Pressing **Sample
+film base from loupe area** stored the sampled *value* and carried it into
+`develop()`. But "linear" is not one scale: live view is sRGB-linear (1.0 =
+display white), a CR3 is sensor-linear (1.0 = saturation), a PQ HEIF is
+absolute (1.0 = 10000 cd/m², and a negative sits near 0.02). Measured on the
+real `.HIF`: a preview-sampled base collapsed the positive's tonal spread from
+**std 0.300 to 0.111**, with nothing outside 0.32–0.74. Flat, and plausible
+enough to keep. On CR3 it was mild (5.3%) because the scales happen to overlap.
+
+Fixed by carrying the **region** instead of the value: `Session._base_region`
+holds normalised coordinates, and `develop(..., base_region=)` re-measures the
+same rebate in the file's own scale at full resolution. `develop` now ignores
+`params.base` entirely.
+
+Two things this uncovered, both worth remembering:
+
+- **`FilmParams.replace` drops `None` by design**, so `replace(base=None)` kept
+  the old base — the UI's Reset had been reporting success and clearing
+  nothing. There is now an explicit `without_base()`.
+- **`np.asarray(heif_file)` is a view into libheif's buffer.** It is freed with
+  the `HeifFile`, and touching the array afterwards is an access violation that
+  kills the process with no traceback. It crashed the suite twice — once in
+  library code, once in a test. Always copy.
+
+---
+
+## 3. Environment facts you will otherwise rediscover slowly
 
 - **Python**: `.venv` on **3.13** 64-bit. Not 3.14 — no `opencv-python` wheels.
 - **SDK**: `EDSDK_v13.20.21_Windows/` in the repo root, git-ignored. 64-bit
@@ -59,7 +98,7 @@ once, properly, rather than a throwaway now.
 
 ---
 
-## 3. Traps this project has already fallen into
+## 4. Traps this project has already fallen into
 
 Every one of these cost real time. They are not hypothetical.
 
@@ -96,7 +135,7 @@ quote Canon's prose. Function and constant *names* in code are fine.
 
 ---
 
-## 4. What was measured (do not re-derive)
+## 5. What was measured (do not re-derive)
 
 | | |
 |---|---|
@@ -112,10 +151,15 @@ quote Canon's prose. Function and constant *names* in code are fine.
 | `Evf_Zoom` | **NOT_SUPPORTED** on R7 — no camera-side magnification |
 | Shutter mode | EDSDK exposes no property; must be set in the camera menu |
 | **EDSDK RAW decode** | **Cannot decode CR3.** `EdsGetImage` → `NOT_SUPPORTED` for every target. Works on JPEG. `EdsGetImageInfo` *lies* — reports 1620×1080/16-bit for a CR3, which is an embedded preview. rawpy is used instead. |
+| **R7 HEIF** | 6960×4640, **10-bit**, PQ (ST 2084) over BT.2020, full range. Codes arrive left-shifted into 16 bits (gap 64). Linear range of a real negative: **0.016–0.066** (160–660 cd/m²) |
+| Develop, end to end | HEIF **3.8–4.0 s**, CR3 **4.9 s** (32 MP, LZW) |
+| TIFF write, 32 MP 16-bit | none **194 MB / 0.13 s** · LZW **103 MB / 1.89 s** · deflate **75.5 MB / 4.86 s**. All lossless, verified pixel-for-pixel |
+| PQ decoded as sRGB | 3.1% mean error vs 0.9% for the correct path, on a real negative's range; **31×** on a 30× range. The 0.9% is the 10-bit quantisation floor (0.98% with no file at all) |
+| HEIF vs CR3, same frame | positives agree on level (mean 0.455 vs 0.445); HEIF carries **~23% more tonal spread** (std 0.292 vs 0.237), consistent with the camera's own rendering being baked in |
 
 ---
 
-## 5. Architecture, briefly
+## 6. Architecture, briefly
 
 ```
 src/cefs/
@@ -141,12 +185,16 @@ guarantees the preview matches the saved result.
 
 ---
 
-## 6. User feedback so far
+## 7. User feedback so far
 
 Confirmed working on real film: colour inversion ("great"), film base sampling,
 peaking ("works great"), focus drive, live view ("20× better than the Wi-Fi
 version"). Fine focus steps were too coarse and have since been reduced to the
 SDK minimum — **not yet retested by the user.**
+
+They asked for **all formats supported: HEIF, JPEG, RAW, CRAW** — all four now
+are. They also asked for configurable filenames, which is the one thing still
+outstanding, and chose to defer it rather than get a throwaway.
 
 They read output carefully and report precisely. Give them numbers, name what is
 unverified, and do not claim a feature works until it has been measured on
@@ -154,12 +202,14 @@ hardware.
 
 ---
 
-## 7. Honest gaps
+## 8. Honest gaps
 
-- **HEIF cannot be developed** (task 1).
-- **No capture settings UI** (task 2).
-- Positive TIFFs are uncompressed and large (task 3).
-- Filename templates not built (task 4, v0.5).
+- **Filename templates not built** — deferred pending the user's spec (§1).
+- **Nothing from this session has met a camera** (§1c).
+- **HEIF primaries are not converted.** Canon writes BT.2020; it is developed in
+  that space, matching the RAW path, which also stays in the camera's own
+  primaries (`output_color=raw`). Converting on one path and not the other
+  would be worse. Neither is colour-managed end to end.
 - **Windows only.** The message pump is isolated, so macOS/Linux stay possible.
 - Glass-to-glass latency has never been measured by either project. The quoted
   "251 ms" baseline is a frame period (1/fps), not lag.
