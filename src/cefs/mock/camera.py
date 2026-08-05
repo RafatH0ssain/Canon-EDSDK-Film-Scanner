@@ -66,6 +66,12 @@ class MockCamera:
         self._noise_bank: list[np.ndarray] = []
         self._noise_index = 0
 
+        #: Write two files per shutter release, as a body set to RAW+JPEG does.
+        #: Off by default so the common case stays simple, but available
+        #: because a mock that can only ever write one file cannot catch the
+        #: bug where a frame number advances per *file* instead of per release.
+        self.dual_format = False
+
         self._info = CameraInfo(model="Mock EOS (no camera)", backend="mock", lens="Mock 85mm Macro")
         self._capabilities = Capabilities(
             focus_drive=True,
@@ -150,7 +156,17 @@ class MockCamera:
         destination = _unique_path(destination_dir / f"MOCK_{index:04d}.jpg")
         destination.write_bytes(encode_jpeg(frame, quality=95))
         # A list, matching the real backend: one release can write several files.
-        return [destination]
+        written = [destination]
+
+        if self.dual_format:
+            # A second file from the same release, as RAW+JPEG produces. PNG
+            # rather than a fake .CR3 so it still decodes -- what is being
+            # modelled is "two files, one shutter release, different
+            # extensions", not the RAW format itself.
+            sibling = destination.with_suffix(".png")
+            cv2.imwrite(str(sibling), frame)
+            written.append(sibling)
+        return written
 
     # --- the frame generator ------------------------------------------------
 

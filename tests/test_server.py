@@ -153,6 +153,47 @@ def test_the_frame_advances_once_per_release(connected):
     assert client.get("/api/roll").json()["frame"] == 4
 
 
+def test_two_files_from_one_release_share_a_frame(connected, tmp_path):
+    """RAW+JPEG is two renderings of one photograph, so it is one frame.
+
+    Advancing per file instead of per release would double every frame number
+    on a roll and there would be no frame 2, 4, 6 at all. Nothing else in the
+    suite catches it: the mock writes a single file unless asked otherwise, and
+    the camera this was tested against is set to RAW only.
+    """
+    client = connected
+    client.app.state.session._backend.dual_format = True
+    client.post("/api/roll", json={"roll": "Roll014", "frame": 7})
+
+    entry = client.post("/api/capture").json()
+    assert entry["count"] == 2, entry
+    assert entry["frame"] == 7
+
+    names = sorted(Path(f["path"]).name for f in entry["files"])
+    assert names == ["Roll014_Frame07.jpg", "Roll014_Frame07.png"]
+    assert all(captured(entry, i).parent == tmp_path / "Roll014" for i in range(2))
+
+    # The next release is the next frame, not the frame after next.
+    assert client.post("/api/capture").json()["frame"] == 8
+
+    body = json.loads((tmp_path / "Roll014" / "roll.json").read_text(encoding="utf-8"))
+    assert [f["frame"] for f in body["frames"]] == [7, 8]
+    assert sorted(body["frames"][0]["files"]) == names
+
+
+def test_both_files_of_a_release_get_their_own_positive(connected, tmp_path):
+    client = connected
+    client.app.state.session._backend.dual_format = True
+    client.post("/api/roll", json={"roll": "Roll015", "frame": 1})
+    entry = client.post("/api/capture").json()
+    assert all(f["positive"] and not f["error"] for f in entry["files"]), entry
+    # Two positives, distinct files, both beside their captures.
+    positives = {f["positive"] for f in entry["files"]}
+    assert len(positives) == 2
+    for name in positives:
+        assert (tmp_path / "Roll015" / name).exists()
+
+
 def test_the_positive_follows_its_capture_into_the_roll(connected, tmp_path):
     client = connected
     client.post("/api/roll", json={"roll": "Roll014", "frame": 3})

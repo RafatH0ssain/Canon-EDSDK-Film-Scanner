@@ -6,7 +6,7 @@ deleted and added to `.gitignore`. The **sibling project's** roadmap survives at
 from it — that is where the v0.5 spec was found. Read it before planning
 anything; it is the closest thing to a roadmap this project still has.
 
-**Status: all four queued tasks are done.** 201 tests pass (was 115).
+**Status: all four queued tasks are done.** 203 tests pass (was 115).
 
 ---
 
@@ -54,7 +54,11 @@ layer pumps messages and marshals transfers and is the last place to put a
 string template. Three decisions worth keeping:
 
 - **A frame is one shutter release, not one file.** RAW+JPEG gives two files
-  sharing a frame number. Getting this wrong doubles every frame number.
+  sharing a frame number. Getting this wrong doubles every frame number. This
+  was claimed before it was tested: the mock wrote one file per shot and the
+  camera is set to RAW only, so nothing exercised it. `MockCamera.dual_format`
+  now writes two, and the test was mutation-checked — introduce the per-file
+  increment and it fails with `assert 9 == 8`.
 - **A rename that fails leaves the capture where it is** and logs. A badly
   named capture is a nuisance; a lost one is not recoverable.
 - **A template with no varying field is refused.** Without `{frame}`,
