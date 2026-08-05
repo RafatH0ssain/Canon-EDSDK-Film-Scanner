@@ -42,7 +42,9 @@ Session-scoped; `config.yaml` is never rewritten. Settle delay reaches a live
 backend through a new settable `settle_delay_s` property on both backends.
 
 **TIFF compression.** `none`/`lzw`/`deflate`, all verified lossless by reading
-back and comparing every pixel. LZW is the default.
+back and comparing every pixel. **Deflate** is the default — LZW manages only
+1.1–1.2× on 16-bit continuous tone and is what OpenCV writes anyway when given
+no parameter, so it was never a choice. See §5.
 
 **The base-scale bug** (found while verifying, pre-existing, fixed — §3).
 
