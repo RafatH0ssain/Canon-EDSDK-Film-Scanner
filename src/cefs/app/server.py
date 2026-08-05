@@ -60,6 +60,20 @@ class FilmUpdate(BaseModel):
     channel_gain: list[float] | None = None
 
 
+class CaptureSettings(BaseModel):
+    """Capture settings the UI can change without editing ``config.yaml``.
+
+    Every field optional: the UI sends only the control that moved.
+    """
+
+    output_dir: str | None = None
+    settle_delay_s: float | None = None
+    develop_positives: bool | None = None
+    positive_format: str | None = None
+    tiff_compression: str | None = None
+    jpeg_quality: int | None = None
+
+
 class BaseSample(BaseModel):
     """Region to sample the film base from, normalised 0-1.
 
@@ -178,6 +192,17 @@ def create_app(config: Config | None = None) -> FastAPI:
     @app.post("/api/sharpness/reset")
     def sharpness_reset() -> dict:
         return session.reset_sharpness_best()
+
+    @app.get("/api/capture/settings")
+    def capture_settings() -> dict:
+        return session.capture_status()
+
+    @app.post("/api/capture/settings")
+    def set_capture_settings(settings: CaptureSettings) -> dict:
+        try:
+            return session.update_capture(**settings.model_dump(exclude_none=True))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/api/capture")
     def capture() -> JSONResponse:

@@ -55,9 +55,25 @@ capture:
   delete_from_camera_after_download: false
 
   # After downloading, write an inverted positive beside each capture using the
-  # same settings the live preview is showing. RAW becomes a 16-bit TIFF;
-  # JPEG/HEIF becomes a JPEG. The original is never modified or overwritten.
+  # same settings the live preview is showing. The original is never modified
+  # or overwritten. All four of these can also be changed from the UI, for the
+  # session; only this file makes a change permanent.
   develop_positives: true
+
+  # Container for the positive:
+  #   auto  keep the depth the capture had -- 16-bit TIFF from RAW and from
+  #         HEIF (which an EOS body writes as 10-bit PQ), JPEG from JPEG
+  #   tiff  always TIFF
+  #   jpeg  always JPEG, which means 8 bits even from a RAW
+  positive_format: "auto"
+
+  # TIFF compression: none, lzw or deflate. All three are lossless. Measured
+  # writing a real 32 MP 16-bit positive: none 194 MB in 0.13 s, lzw 103 MB in
+  # 1.9 s, deflate 75 MB in 4.9 s.
+  tiff_compression: "lzw"
+
+  # Quality of a JPEG positive, 1-100. Does not affect TIFF output.
+  jpeg_quality: 95
 
 film:
   # Which inversion pipeline the preview uses by default: "bw" or "color".

@@ -88,6 +88,17 @@ class CaptureConfig:
     # the preview shows. Never modifies or replaces the original.
     develop_positives: bool = True
 
+    # How that positive is written. "auto" keeps the depth the source had:
+    # 16-bit TIFF from RAW and HEIF, JPEG from JPEG. See
+    # cefs.processing.develop.OutputOptions.
+    positive_format: str = "auto"
+
+    # Lossless either way. LZW roughly halves a 16-bit TIFF -- measured 193.8
+    # -> 74.8 MB on a 32 MP frame -- for about two seconds of write time.
+    tiff_compression: str = "lzw"
+
+    jpeg_quality: int = 95
+
     def resolved_output_dir(self) -> Path:
         """Absolute output directory, resolving relative paths against the repo."""
         p = Path(self.output_dir).expanduser()

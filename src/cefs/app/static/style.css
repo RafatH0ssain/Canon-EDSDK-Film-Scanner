@@ -173,6 +173,23 @@ code {
 input[type="range"] { width: 100%; accent-color: var(--accent); }
 input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; }
 
+input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 9px;
+  font: inherit;
+  /* Paths are long and full of separators; smaller and monospaced keeps one
+     on a single line and makes a typo in it visible. */
+  font-size: 12px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+input[type="text"]:focus { outline: none; border-color: var(--accent); }
+input[type="text"]:disabled { opacity: 0.45; }
+
 output { color: var(--accent); font-variant-numeric: tabular-nums; }
 
 .note {

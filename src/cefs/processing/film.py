@@ -55,7 +55,9 @@ differing only in how many entries they have.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
+from functools import cache
 
 import cv2
 import numpy as np
@@ -124,6 +126,16 @@ class FilmParams:
         merged = {**self.__dict__, **{k: v for k, v in changes.items() if v is not None}}
         return FilmParams(**merged)
 
+    def without_base(self) -> "FilmParams":
+        """A copy with the film base cleared, so it is measured afresh.
+
+        :meth:`replace` cannot express this: it drops ``None`` so that a
+        partial update from the UI does not wipe every field it left out, which
+        means ``replace(base=None)`` quietly keeps the old base instead of
+        resetting it.
+        """
+        return dataclasses.replace(self, base=None)
+
 
 # --- transfer functions ------------------------------------------------------
 
@@ -157,6 +169,64 @@ def linear16_to_linear(image: np.ndarray) -> np.ndarray:
     if image.dtype != np.uint16:
         raise TypeError(f"linear16_to_linear expects uint16, got {image.dtype}")
     return image.astype(np.float32) / 65535.0
+
+
+# --- PQ, for HEIF ------------------------------------------------------------
+#
+# A Canon body writes HEIF only in HDR PQ mode, and the file says so: measured
+# on an EOS R7 .HIF, the NCLX profile reports transfer characteristic 16
+# (SMPTE ST 2084, "PQ") over BT.2020 primaries at 10 bits. PQ is not a gamma
+# curve and is nowhere near sRGB: on that same file the negative's true
+# transmittance range is 4.15x, and reading the codes as sRGB gives 1.70x.
+#
+# How much that matters is worth stating honestly, because the answer is "less
+# than you would expect, and more the better your negative is". The inversion
+# measures base, scale and exposure per frame, so it absorbs most of a wrong
+# input curve. Measured against a linear reference of the same scene: on the
+# density range a real negative occupies the sRGB misreading costs 3.1% mean
+# absolute error against the PQ path's 0.9% -- and the 0.9% is the 10-bit
+# quantisation floor, which is 0.98% with no file involved at all, so the
+# transfer itself contributes essentially nothing. On a wider-range original
+# the gap opens to 31x. A wrongly decoded positive would still look like a
+# photograph; it would just be a few percent flatter and darker than the one
+# the same negative gives through every other path in this program.
+#
+# Primaries are deliberately *not* converted to sRGB here. The RAW path decodes
+# in the camera's own primaries too (``output_color=raw`` in
+# :mod:`cefs.processing.raw`), and the per-channel base division that follows is
+# a far stronger colour normalisation than a primaries matrix. Converting on one
+# path and not the other would make the two disagree, which is worse than both
+# being consistently approximate.
+
+_PQ_M1 = 2610 / 16384
+_PQ_M2 = 2523 / 4096 * 128
+_PQ_C1 = 3424 / 4096
+_PQ_C2 = 2413 / 4096 * 32
+_PQ_C3 = 2392 / 4096 * 32
+
+
+def pq_to_linear(pq: np.ndarray) -> np.ndarray:
+    """Decode PQ-encoded 0-1 values to linear 0-1.
+
+    The ST 2084 EOTF is defined against an absolute 10000 cd/m^2 peak, so 1.0
+    out means 10000 nits rather than "white". That fixed reference is exactly
+    what is wanted: every frame of a roll decodes on the same scale, and the
+    inversion's own base division sets the working exposure afterwards.
+    """
+    p = np.power(np.clip(np.asarray(pq, dtype=np.float64), 0.0, 1.0), 1.0 / _PQ_M2)
+    return np.power(np.maximum(p - _PQ_C1, 0.0) / (_PQ_C2 - _PQ_C3 * p), 1.0 / _PQ_M1)
+
+
+@cache
+def pq16_to_linear_lut() -> np.ndarray:
+    """Linear value of every 16-bit PQ code.
+
+    256 KB, built once. Canon's 10-bit samples arrive left-shifted into 16 bits
+    -- measured: the gap between adjacent distinct values is exactly 64 -- so
+    indexing this table with the raw code is exact, and every one of the source
+    file's distinct levels survives.
+    """
+    return pq_to_linear(np.arange(65536, dtype=np.float64) / 65535.0).astype(np.float32)
 
 
 # --- film base ---------------------------------------------------------------
@@ -289,7 +359,13 @@ def analyse(linear: np.ndarray, params: FilmParams) -> dict:
 # --- lookup tables -----------------------------------------------------------
 
 
-def build_luts(measured: dict, params: FilmParams, in_bits: int, out_bits: int) -> np.ndarray:
+def build_luts(
+    measured: dict,
+    params: FilmParams,
+    in_bits: int,
+    out_bits: int,
+    input_linear: np.ndarray | None = None,
+) -> np.ndarray:
     """Build one lookup table per channel covering the whole transfer.
 
     Args:
@@ -297,11 +373,22 @@ def build_luts(measured: dict, params: FilmParams, in_bits: int, out_bits: int) 
         params: See :class:`FilmParams`.
         in_bits: 8 for a live-view frame, 16 for decoded RAW.
         out_bits: 8 for preview, 16 for a saved file.
+        input_linear: The linear value each input code represents. Defaults to
+            an sRGB decode at 8 bits and a straight scale at 16. HEIF passes
+            :func:`pq16_to_linear_lut` here, which composes the PQ EOTF into
+            the same single gather rather than decoding the image twice.
 
     Returns:
         ``(3, 2 ** in_bits)`` table of the output dtype.
     """
-    if in_bits == 8:
+    if input_linear is not None:
+        inputs = np.asarray(input_linear, dtype=np.float64)
+        if inputs.shape != (1 << in_bits,):
+            raise ValueError(
+                f"input_linear must have {1 << in_bits} entries for in_bits={in_bits}, "
+                f"got {inputs.shape}"
+            )
+    elif in_bits == 8:
         inputs = _SRGB_TO_LINEAR_LUT.astype(np.float64)
     elif in_bits == 16:
         inputs = np.arange(65536, dtype=np.float64) / 65535.0
@@ -394,3 +481,21 @@ def invert_raw(
         measured = analyse(linear16_to_linear(linear_rgb16), params)
     luts = build_luts(measured, params, in_bits=16, out_bits=16)
     return _apply_luts(linear_rgb16, luts, params.mode)
+
+
+def invert_pq(
+    pq_rgb16: np.ndarray, params: FilmParams, measured: dict | None = None
+) -> np.ndarray:
+    """Invert a 16-bit PQ-encoded RGB array -- a Canon HEIF -- to 16-bit sRGB.
+
+    Identical to :func:`invert_raw` but for the input transfer, which is PQ
+    rather than linear. Stays 16-bit: the source is 10-bit, and the inversion
+    stretches its range hard enough that 8 bits would band.
+    """
+    if pq_rgb16.dtype != np.uint16:
+        raise TypeError(f"invert_pq expects uint16, got {pq_rgb16.dtype}")
+    table = pq16_to_linear_lut()
+    if measured is None:
+        measured = analyse(table[pq_rgb16], params)
+    luts = build_luts(measured, params, in_bits=16, out_bits=16, input_linear=table)
+    return _apply_luts(pq_rgb16, luts, params.mode)

@@ -201,6 +201,20 @@ class EdsdkCamera:
     def capabilities(self) -> Capabilities:
         return self._capabilities
 
+    @property
+    def settle_delay_s(self) -> float:
+        return self._settle_delay_s
+
+    @settle_delay_s.setter
+    def settle_delay_s(self, seconds: float) -> None:
+        """Safe from any thread without the command queue.
+
+        One float, written here and read once on the camera thread at the top
+        of a capture. There is nothing to tear: a capture already in flight
+        keeps the value it started with, and the next one picks this up.
+        """
+        self._settle_delay_s = max(0.0, float(seconds))
+
     # --- public operations (any thread) -------------------------------------
 
     def latest_frame(self) -> bytes | None:

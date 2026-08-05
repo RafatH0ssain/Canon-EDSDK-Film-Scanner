@@ -75,6 +75,18 @@ class CameraBackend(Protocol):
     def capabilities(self) -> Capabilities:
         """What it supports."""
 
+    @property
+    def settle_delay_s(self) -> float:
+        """Seconds waited before firing, so the rig can stop vibrating.
+
+        Settable while connected: it is read at the moment of capture, and a
+        user who has just nudged the copy stand should not have to reconnect to
+        lengthen it.
+        """
+
+    @settle_delay_s.setter
+    def settle_delay_s(self, seconds: float) -> None: ...
+
     def latest_frame(self) -> bytes | None:
         """Newest live-view frame as JPEG bytes, or ``None`` if none yet."""
 

@@ -17,9 +17,12 @@ from cefs.processing.film import (
     FilmParams,
     analyse,
     build_luts,
+    invert_pq,
     invert_preview,
     invert_raw,
     linear16_to_linear,
+    pq16_to_linear_lut,
+    pq_to_linear,
     sample_base,
     srgb_to_linear,
 )
@@ -258,3 +261,58 @@ def test_linear16_conversion_roundtrips():
     linear = linear16_to_linear(values)
     assert linear[0, 0, 0] == pytest.approx(0.0)
     assert linear[0, 0, 2] == pytest.approx(1.0)
+
+
+# --- PQ, the transfer a Canon HEIF actually uses ------------------------------
+
+
+def test_pq_matches_the_standard_at_known_points():
+    """Checked against published ST 2084 values, not against our own maths.
+
+    The best-known anchor is that PQ code 0.5 is 92.2 cd/m^2 -- a number that
+    exists precisely because it surprises people who expect half of something.
+    Getting the constants subtly wrong is easy and gives a curve that still
+    looks like a curve, so this pins it to values from outside this codebase.
+    """
+    assert pq_to_linear(0.0) == pytest.approx(0.0)
+    assert pq_to_linear(1.0) == pytest.approx(1.0)
+    # 92.2 nits of a 10000 nit peak.
+    assert pq_to_linear(0.5) * 10000 == pytest.approx(92.2, abs=0.5)
+    # 100 nits, SDR reference white, sits at code 0.5081.
+    assert pq_to_linear(0.5081) * 10000 == pytest.approx(100.0, abs=1.0)
+
+
+def test_pq_is_monotonic():
+    table = pq16_to_linear_lut()
+    assert np.all(np.diff(table) >= 0)
+
+
+def test_pq_table_keeps_every_10_bit_level_distinct():
+    """Canon's 10-bit samples arrive left-shifted into 16 bits.
+
+    Measured on a real .HIF: adjacent distinct values are exactly 64 apart. So
+    the table has to resolve every one of the 1024 codes, or the file loses
+    levels on the way in.
+    """
+    table = pq16_to_linear_lut()
+    codes = np.arange(1024) << 6
+    assert np.unique(table[codes]).size == 1024
+
+
+def test_pq_inversion_is_not_the_srgb_inversion(colour_negative):
+    """The same codes, read two ways, must not give the same picture.
+
+    If these agreed, nothing downstream could tell a correct HEIF decode from
+    an incorrect one, and every other PQ test here would be vacuous.
+    """
+    codes = (colour_negative[:, :, ::-1].astype(np.uint16) << 8)
+    params = FilmParams(mode="color")
+    as_pq = invert_pq(codes, params).astype(float) / 65535
+    as_srgb = invert_preview(colour_negative, params)[:, :, ::-1].astype(float) / 255
+    assert np.abs(as_pq - as_srgb).mean() > 0.02
+
+
+def test_custom_input_transfer_must_match_the_depth():
+    measured = {"base": (0.9, 0.5, 0.3), "scales": (2.0, 2.0, 2.0), "gammas": (1.0, 1.0, 1.0)}
+    with pytest.raises(ValueError):
+        build_luts(measured, FilmParams(), 16, 16, input_linear=np.linspace(0, 1, 256))

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -113,6 +115,152 @@ def test_capture_keeps_the_original(connected, tmp_path):
     original = (tmp_path / first["name"]).read_bytes()
     connected.post("/api/capture")
     assert (tmp_path / first["name"]).read_bytes() == original
+
+
+# --- the film base across the preview/file boundary ---------------------------
+
+
+def test_sampling_the_base_records_the_region(connected):
+    _frame_when_ready(connected)
+    body = connected.post("/api/film/base", json={"region": [0.1, 0.1, 0.2, 0.2]}).json()
+    assert body["base"] is not None
+    # The region is what reaches a developed file; the value cannot.
+    assert body["base_region"] == [0.1, 0.1, 0.2, 0.2]
+
+
+def test_resetting_the_base_actually_clears_it(connected):
+    """`replace(base=None)` drops the None and keeps the old base, so this
+    reset used to report success and change nothing."""
+    _frame_when_ready(connected)
+    connected.post("/api/film/base", json={"region": [0.1, 0.1, 0.2, 0.2]})
+    body = connected.post("/api/film/base", json={}).json()
+    assert body["base"] is None
+    assert body["base_region"] is None
+
+
+def test_the_sampled_region_reaches_the_saved_positive(connected, tmp_path):
+    """The whole point of carrying the region instead of the value.
+
+    The written positive must be what re-measuring that region in the captured
+    file gives -- not what the preview's sampled number gives, and not the
+    automatic estimate either.
+    """
+    import cv2
+
+    from cefs.processing.develop import develop
+    from cefs.processing.film import FilmParams
+
+    region = [0.05, 0.05, 0.1, 0.1]
+    _frame_when_ready(connected)
+    connected.post("/api/film/base", json={"region": region})
+    entry = connected.post("/api/capture").json()
+
+    session = connected.app.state.session
+    assert session._base_region == tuple(region)
+    written = cv2.imread(str(tmp_path / entry["files"][0]["positive"]), cv2.IMREAD_UNCHANGED)
+
+    source = tmp_path / entry["files"][0]["name"]
+    expected = cv2.imread(
+        str(develop(source, session.film, output_dir=tmp_path, base_region=tuple(region))),
+        cv2.IMREAD_UNCHANGED,
+    )
+    assert np.array_equal(written, expected)
+
+    # And the region is genuinely in play, not quietly dropped for the default.
+    automatic = cv2.imread(
+        str(develop(source, FilmParams(mode=session.film.mode), output_dir=tmp_path)),
+        cv2.IMREAD_UNCHANGED,
+    )
+    assert not np.array_equal(written, automatic)
+
+
+# --- capture settings --------------------------------------------------------
+
+
+def test_capture_settings_are_in_the_status(client):
+    capture = client.get("/api/status").json()["capture"]
+    assert set(capture) >= {
+        "settle_delay_s", "output_dir", "resolved_output_dir", "develop_positives",
+        "positive_format", "tiff_compression", "jpeg_quality",
+    }
+    # The UI builds its controls from these, so an empty list would leave the
+    # user with a section of dead buttons.
+    assert capture["formats"] and capture["compressions"]
+
+
+def test_settings_round_trip(client):
+    body = client.post(
+        "/api/capture/settings",
+        json={"settle_delay_s": 2.5, "positive_format": "tiff", "jpeg_quality": 80},
+    ).json()
+    assert body["settle_delay_s"] == 2.5
+    assert body["positive_format"] == "tiff"
+    assert client.get("/api/capture/settings").json()["jpeg_quality"] == 80
+
+
+def test_changing_the_save_location_actually_moves_the_files(connected, tmp_path):
+    """A setting that reports success and changes nothing is the recurring bug."""
+    elsewhere = tmp_path / "roll-2"
+    client = connected
+    assert client.post(
+        "/api/capture/settings", json={"output_dir": str(elsewhere)}
+    ).status_code == 200
+    entry = client.post("/api/capture").json()
+    assert (elsewhere / entry["name"]).exists()
+    assert Path(entry["files"][0]["path"]).parent == elsewhere
+
+
+def test_a_new_save_location_is_created(client, tmp_path):
+    fresh = tmp_path / "does" / "not" / "exist" / "yet"
+    client.post("/api/capture/settings", json={"output_dir": str(fresh)})
+    assert fresh.is_dir()
+
+
+def test_settle_delay_reaches_a_connected_backend(connected):
+    """Otherwise it takes effect only after a reconnect, silently."""
+    session = connected.app.state.session
+    connected.post("/api/capture/settings", json={"settle_delay_s": 0.25})
+    assert session._backend.settle_delay_s == pytest.approx(0.25)
+
+
+def test_develop_positives_can_be_turned_off(connected, tmp_path):
+    connected.post("/api/capture/settings", json={"develop_positives": False})
+    assert connected.post("/api/capture").json()["files"][0]["positive"] is None
+    connected.post("/api/capture/settings", json={"develop_positives": True})
+    entry = connected.post("/api/capture").json()
+    assert entry["files"][0]["positive"]
+    assert (tmp_path / entry["files"][0]["positive"]).exists()
+
+
+def test_the_chosen_format_is_the_format_written(connected, tmp_path):
+    connected.post("/api/capture/settings", json={"positive_format": "tiff"})
+    entry = connected.post("/api/capture").json()
+    assert entry["files"][0]["positive"].endswith(".tif")
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"positive_format": "webp"},
+        {"tiff_compression": "rle"},
+        {"jpeg_quality": 0},
+        {"jpeg_quality": 500},
+        {"output_dir": "   "},
+    ],
+)
+def test_bad_settings_are_refused_and_change_nothing(client, bad):
+    before = client.get("/api/capture/settings").json()
+    assert client.post("/api/capture/settings", json=bad).status_code == 422
+    assert client.get("/api/capture/settings").json() == before
+
+
+def test_settle_delay_is_clamped(client):
+    assert client.post(
+        "/api/capture/settings", json={"settle_delay_s": -5}
+    ).json()["settle_delay_s"] == 0.0
+    assert client.post(
+        "/api/capture/settings", json={"settle_delay_s": 9999}
+    ).json()["settle_delay_s"] == 60.0
 
 
 def test_capabilities_are_reported(connected):

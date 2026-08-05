@@ -23,7 +23,13 @@ import numpy as np
 from cefs.backend import CameraBackend, CameraError
 from cefs.config import Config
 from cefs.processing.codec import DecodeError, decode_jpeg, encode_jpeg
-from cefs.processing.develop import DevelopError, develop
+from cefs.processing.develop import (
+    POSITIVE_FORMATS,
+    TIFF_COMPRESSION,
+    DevelopError,
+    OutputOptions,
+    develop,
+)
 from cefs.processing.film import FilmParams, analyse, invert_preview, srgb_to_linear
 from cefs.processing.invert import invert_linear
 from cefs.processing.loupe import crop_zoom
@@ -105,6 +111,11 @@ class Session:
         # so it is measured on demand rather than per frame. Re-measured when
         # the user asks, or when a parameter that changes its meaning changes.
         self._measured: dict | None = None
+        # Where the user pointed at the rebate, in normalised coordinates. The
+        # region is what travels to the developed file, not the value sampled
+        # from it -- live view and a capture are on different linear scales.
+        # See cefs.processing.develop._measure.
+        self._base_region: tuple[float, float, float, float] | None = None
 
     # --- lifecycle ----------------------------------------------------------
 
@@ -168,15 +179,13 @@ class Session:
 
     def status(self) -> dict:
         backend = self._backend
-        capture = self._config.capture
         if backend is None:
             return {
                 "connected": False,
                 "backend": "mock" if self._config.camera.use_mock else "edsdk",
                 "error": self._last_error,
                 "view": asdict(self.view),
-                "settle_delay_s": capture.settle_delay_s,
-                "output_dir": str(capture.resolved_output_dir()),
+                "capture": self.capture_status(),
                 "captures": self._captures,
                 "film": self.film_status(),
             }
@@ -188,8 +197,7 @@ class Session:
             "lens": backend.info.lens,
             "error": "",
             "view": asdict(self.view),
-            "settle_delay_s": capture.settle_delay_s,
-            "output_dir": str(capture.resolved_output_dir()),
+            "capture": self.capture_status(),
             "capabilities": {
                 "focus_drive": caps.focus_drive,
                 "liveview_zoom": caps.liveview_zoom,
@@ -199,6 +207,87 @@ class Session:
             "captures": self._captures,
             "film": self.film_status(),
         }
+
+    # --- capture settings ---------------------------------------------------
+
+    def capture_status(self) -> dict:
+        """The capture settings, and the choices the UI may offer for each."""
+        capture = self._config.capture
+        return {
+            "settle_delay_s": capture.settle_delay_s,
+            "output_dir": capture.output_dir,
+            "resolved_output_dir": str(capture.resolved_output_dir()),
+            "develop_positives": capture.develop_positives,
+            "positive_format": capture.positive_format,
+            "tiff_compression": capture.tiff_compression,
+            "jpeg_quality": capture.jpeg_quality,
+            "formats": list(POSITIVE_FORMATS),
+            "compressions": list(TIFF_COMPRESSION),
+        }
+
+    def output_options(self) -> OutputOptions:
+        capture = self._config.capture
+        return OutputOptions(
+            format=capture.positive_format,
+            tiff_compression=capture.tiff_compression,
+            jpeg_quality=capture.jpeg_quality,
+        )
+
+    def update_capture(self, **changes) -> dict:
+        """Change capture settings from the UI.
+
+        Every setting is validated here rather than at the shutter. A save
+        location that cannot be created, or a compression name with a typo in
+        it, should fail while you are still looking at the control -- not
+        halfway through developing a 32 MP frame.
+
+        These changes last for the session. ``config.yaml`` is not rewritten:
+        the file holds the path to a licensed SDK, and a UI that edited it
+        would be a UI that could corrupt it.
+        """
+        capture = self._config.capture
+        changes = {k: v for k, v in changes.items() if v is not None}
+
+        if "output_dir" in changes:
+            directory = str(changes["output_dir"]).strip()
+            if not directory:
+                raise ValueError("Save location cannot be empty.")
+            previous = capture.output_dir
+            capture.output_dir = directory
+            try:
+                capture.resolved_output_dir().mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                capture.output_dir = previous
+                raise ValueError(f"Cannot use that save location: {exc}") from exc
+
+        if "settle_delay_s" in changes:
+            # 60 s is already far longer than any copy stand needs; the cap is
+            # only there so a stray keystroke cannot appear to hang the app.
+            capture.settle_delay_s = max(0.0, min(float(changes["settle_delay_s"]), 60.0))
+            backend = self._backend
+            if backend is not None:
+                backend.settle_delay_s = capture.settle_delay_s
+
+        if "develop_positives" in changes:
+            capture.develop_positives = bool(changes["develop_positives"])
+
+        # The three output settings are validated together, by the same code
+        # that will use them, and rolled back as a group if any is bad.
+        output_keys = ("positive_format", "tiff_compression", "jpeg_quality")
+        if any(key in changes for key in output_keys):
+            snapshot = {key: getattr(capture, key) for key in output_keys}
+            for key in output_keys:
+                if key in changes:
+                    setattr(capture, key, changes[key])
+            try:
+                capture.jpeg_quality = int(capture.jpeg_quality)
+                self.output_options().validate()
+            except (DevelopError, TypeError, ValueError) as exc:
+                for key, value in snapshot.items():
+                    setattr(capture, key, value)
+                raise ValueError(str(exc)) from exc
+
+        return self.capture_status()
 
     def update_view(self, **changes) -> dict:
         """Apply view changes from the UI, ignoring unknown keys."""
@@ -283,14 +372,16 @@ class Session:
         if payload is None:
             raise CameraError("No frame available yet.")
         linear = srgb_to_linear(decode_jpeg(payload)[:, :, ::-1])
-        params = self.film
         if region is not None:
             from cefs.processing.film import sample_base
 
-            params = params.replace(base=sample_base(linear, region=tuple(region)))
-            self.film = params
+            self._base_region = tuple(float(v) for v in region)
+            self.film = self.film.replace(base=sample_base(linear, region=self._base_region))
         else:
-            self.film = params.replace(base=None)
+            # A reset has to clear both, and `replace(base=None)` cannot: it
+            # drops None, so it would keep the base it claims to be clearing.
+            self._base_region = None
+            self.film = self.film.without_base()
         self._measured = analyse(linear, self.film)
         return self.film_status()
 
@@ -317,6 +408,10 @@ class Session:
             "auto_balance": f.auto_balance,
             "channel_gain": [round(v, 3) for v in f.channel_gain],
             "base": [round(v, 5) for v in f.base] if f.base else None,
+            # What actually reaches a developed file. Reported so the UI can
+            # say the saved positive uses the rebate you pointed at, and not
+            # leave you guessing whether it survived the capture.
+            "base_region": list(self._base_region) if self._base_region else None,
             "measured": {
                 k: [round(x, 5) for x in v] for k, v in (self._measured or {}).items()
             }
@@ -414,6 +509,7 @@ class Session:
             raise CameraError("Not connected.")
         started = time.perf_counter()
         paths = [Path(p) for p in backend.capture(self._config.capture.resolved_output_dir())]
+        output = self.output_options()
 
         files = []
         for path in paths:
@@ -422,12 +518,16 @@ class Session:
                 "path": str(path),
                 "bytes": path.stat().st_size if path.exists() else 0,
                 "positive": None,
+                "positive_bytes": 0,
                 "error": "",
             }
             if self._config.capture.develop_positives:
                 try:
-                    positive = develop(path, self.film)
+                    positive = develop(
+                        path, self.film, output=output, base_region=self._base_region
+                    )
                     entry["positive"] = positive.name
+                    entry["positive_bytes"] = positive.stat().st_size
                 except DevelopError as exc:
                     # A failed development must not lose the capture itself --
                     # the original is the one thing that cannot be regenerated.

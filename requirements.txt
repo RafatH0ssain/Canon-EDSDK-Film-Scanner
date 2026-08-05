@@ -19,6 +19,11 @@ opencv-python>=4.10,<5     # cv2: JPEG decode/encode, inversion, peaking
 # EDSDK cannot decode CR3 -- measured, see src/cefs/edsdk/decode.py -- so RAW
 # needs LibRaw. Ships as a wheel on Windows; no compiler required.
 rawpy>=0.22,<1
+# HEIF is what an EOS body writes in HDR PQ mode (.HIF), and this OpenCV build
+# cannot read it. pillow-heif bundles libheif in the wheel, and unlike cv2 it
+# gives us the full 10 bits and the file's colour profile -- which is how we
+# know the samples are PQ-encoded rather than sRGB.
+pillow-heif>=0.16,<2
 
 # --- Local web UI -----------------------------------------------------------
 fastapi>=0.115,<1

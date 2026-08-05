@@ -101,6 +101,14 @@ class MockCamera:
     def capabilities(self) -> Capabilities:
         return self._capabilities
 
+    @property
+    def settle_delay_s(self) -> float:
+        return self._settle_delay_s
+
+    @settle_delay_s.setter
+    def settle_delay_s(self, seconds: float) -> None:
+        self._settle_delay_s = max(0.0, float(seconds))
+
     # --- operations ---------------------------------------------------------
 
     def latest_frame(self) -> bytes | None:

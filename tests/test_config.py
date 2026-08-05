@@ -63,3 +63,27 @@ def test_env_booleans_are_parsed_not_truthy(monkeypatch, tmp_path):
 def test_output_dir_resolves_relative_to_the_repo():
     config = Config()
     assert config.capture.resolved_output_dir().is_absolute()
+
+
+def test_positive_output_defaults_are_valid():
+    """The defaults must be values develop() will accept, not merely strings."""
+    from cefs.processing.develop import OutputOptions
+
+    capture = Config().capture
+    OutputOptions(
+        format=capture.positive_format,
+        tiff_compression=capture.tiff_compression,
+        jpeg_quality=capture.jpeg_quality,
+    ).validate()
+
+
+def test_the_example_config_loads(tmp_path):
+    """config.example.yaml is what a new user copies; it must actually parse.
+
+    Loading is strict about unknown settings, so this also catches a field
+    renamed in code and left stale in the example.
+    """
+    from cefs.config import REPO_ROOT
+
+    config = load_config(REPO_ROOT / "config.example.yaml")
+    assert config.capture.positive_format in ("auto", "tiff", "jpeg")

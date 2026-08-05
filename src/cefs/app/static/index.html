@@ -73,7 +73,10 @@
           Put the loupe over the <em>rebate</em> &mdash; the clear unexposed border
           between frames &mdash; then press this. Measuring the real base beats the
           automatic guess, which assumes the densest part of the picture is close
-          to base density.
+          to base density. The <em>area</em> you pick carries over to the saved
+          positive, where the same rebate is re-measured at full resolution: a
+          capture and a live-view frame are on different scales, so the number
+          itself would mean nothing there.
         </p>
 
         <label class="row stacked">
@@ -89,9 +92,9 @@
         <p class="note warn" id="film-disabled-note" hidden></p>
 
         <p class="note">
-          This affects the <em>preview only</em>. The captured file is always saved
-          exactly as the camera wrote it &mdash; inverting downloaded files is not
-          wired up yet.
+          These settings drive both the preview <em>and</em> the positive written
+          after a capture, so the file matches what you judged here. The capture
+          itself is always kept exactly as the camera wrote it.
         </p>
       </div>
 
@@ -184,11 +187,75 @@
           Capture <kbd>Space</kbd>
         </button>
         <dl class="facts">
-          <dt>Settle delay</dt><dd id="settle">&mdash;</dd>
           <dt>Shutter</dt><dd id="shutter-mode">&mdash;</dd>
-          <dt>Saving to</dt><dd id="output-dir" class="path">&mdash;</dd>
+          <dt>Saving to</dt><dd id="resolved-dir" class="path">&mdash;</dd>
         </dl>
         <div id="capture-status" class="capture-status" hidden></div>
+
+        <label class="row stacked">
+          <span>Save to</span>
+          <input type="text" id="output-dir" spellcheck="false" autocomplete="off">
+        </label>
+        <p class="note" id="output-dir-note">
+          Press <kbd>Enter</kbd> or click away to apply. A relative path resolves
+          against the project folder, and the folder is created if it does not
+          exist. Changes last for this session &mdash; to make one permanent, set
+          <code>capture.output_dir</code> in <code>config.yaml</code>.
+        </p>
+
+        <label class="row stacked">
+          <span>Settle delay <output id="settle-value">&mdash;</output></span>
+          <input type="range" id="settle" min="0" max="10" step="0.1" value="1.5">
+        </label>
+        <p class="note">
+          Waited after the last thing that could have disturbed the rig, before
+          the shutter fires. On a copy stand, residual vibration is the main
+          cause of soft scans.
+        </p>
+
+        <label class="row">
+          <input type="checkbox" id="develop-positives" checked>
+          <span>Develop a positive beside each capture</span>
+        </label>
+        <p class="note">
+          Uses the inversion settings above, so the file matches what you judged
+          on screen. The original is never modified or overwritten.
+        </p>
+
+        <div id="positive-options">
+          <label class="row stacked">
+            <span>Positive format</span>
+            <div class="segmented" id="positive-format">
+              <button data-value="auto">Auto</button>
+              <button data-value="tiff">TIFF</button>
+              <button data-value="jpeg">JPEG</button>
+            </div>
+          </label>
+          <p class="note">
+            <strong>Auto</strong> keeps the depth the capture had: a 16-bit TIFF
+            from RAW and from HEIF, a JPEG from a JPEG. Forcing JPEG on a RAW
+            throws away 8 bits, which is a fine proof and a poor master.
+          </p>
+
+          <label class="row stacked">
+            <span>TIFF compression</span>
+            <div class="segmented" id="tiff-compression">
+              <button data-value="none">None</button>
+              <button data-value="lzw">LZW</button>
+              <button data-value="deflate">Deflate</button>
+            </div>
+          </label>
+          <p class="note">
+            All lossless. Measured writing a real 32 MP 16-bit positive: none
+            194 MB in 0.1 s, <strong>LZW 103 MB in 1.9 s</strong>, deflate
+            75 MB in 4.9 s.
+          </p>
+
+          <label class="row stacked">
+            <span>JPEG quality <output id="jpeg-quality-value">95</output></span>
+            <input type="range" id="jpeg-quality" min="50" max="100" step="1" value="95">
+          </label>
+        </div>
       </div>
 
       <div class="group">
@@ -199,9 +266,8 @@
       <div class="group">
         <h2>Not in this version</h2>
         <p class="note">
-          Proper black &amp; white and colour inversion is v0.3 &mdash; colour
-          negatives still preview cyan. Corner-by-corner alignment checking is
-          v0.4. See <code>ROADMAP.md</code>.
+          Corner-by-corner alignment checking is not built yet, and captures are
+          still named by the camera &mdash; no roll or frame numbering.
         </p>
       </div>
     </aside>

@@ -28,8 +28,16 @@ const els = {
   captureStatus: $("capture-status"),
   captures: $("captures"),
   settle: $("settle"),
+  settleValue: $("settle-value"),
   shutterMode: $("shutter-mode"),
   outputDir: $("output-dir"),
+  resolvedDir: $("resolved-dir"),
+  developPositives: $("develop-positives"),
+  positiveOptions: $("positive-options"),
+  positiveFormat: $("positive-format"),
+  tiffCompression: $("tiff-compression"),
+  jpegQuality: $("jpeg-quality"),
+  jpegQualityValue: $("jpeg-quality-value"),
   toast: $("toast"),
   peaking: $("peaking"),
   peakingSensitivity: $("peaking-sensitivity"),
@@ -102,9 +110,8 @@ function render(status) {
 
   els.model.textContent = status.model || "—";
   els.lens.textContent = status.lens || "—";
-  els.settle.textContent = `${status.settle_delay_s} s`;
-  els.outputDir.textContent = status.output_dir || "—";
   els.capture.disabled = !connected || capturing;
+  if (status.capture) renderCaptureSettings(status.capture);
 
   // Report the shutter honestly. EDSDK exposes no shutter-mode property, so
   // claiming "electronic" here would be asserting something we never set.
@@ -183,6 +190,44 @@ function render(status) {
   }
 }
 
+function renderCaptureSettings(capture) {
+  // Never yank a control out from under the user. A refresh landing mid-drag
+  // or mid-word would rewrite what they are in the middle of setting, so a
+  // focused control keeps whatever it currently shows.
+  const idle = (el) => document.activeElement !== el;
+
+  if (idle(els.outputDir)) els.outputDir.value = capture.output_dir || "";
+  els.resolvedDir.textContent = capture.resolved_output_dir || "—";
+  els.resolvedDir.title = capture.resolved_output_dir || "";
+
+  if (idle(els.settle)) els.settle.value = capture.settle_delay_s;
+  els.settleValue.textContent = `${Number(capture.settle_delay_s).toFixed(1)} s`;
+
+  els.developPositives.checked = capture.develop_positives;
+  setSegmented(els.positiveFormat, capture.positive_format);
+  setSegmented(els.tiffCompression, capture.tiff_compression);
+  if (idle(els.jpegQuality)) els.jpegQuality.value = capture.jpeg_quality;
+  els.jpegQualityValue.textContent = capture.jpeg_quality;
+
+  // Nothing to configure about a positive that is not being written.
+  els.positiveOptions.style.opacity = capture.develop_positives ? "1" : "0.45";
+  els.positiveOptions.querySelectorAll("button, input").forEach((el) => {
+    el.disabled = !capture.develop_positives;
+  });
+}
+
+async function setCapture(changes) {
+  try {
+    renderCaptureSettings(
+      await api("/api/capture/settings", { method: "POST", body: JSON.stringify(changes) })
+    );
+  } catch (err) {
+    toast(err.message, true);
+    // Rejected: show what the server actually holds, not the control's guess.
+    await refresh();
+  }
+}
+
 function renderCaptures(items) {
   if (!items.length) {
     els.captures.innerHTML = '<li class="empty">Nothing yet.</li>';
@@ -193,7 +238,11 @@ function renderCaptures(items) {
       const mb = (c.bytes / 1e6).toFixed(1);
       const files = c.files || [{ name: c.name }];
       const count = c.count > 1 ? ` &middot; ${c.count} files` : "";
-      const positives = files.filter((f) => f.positive).map((f) => f.positive);
+      const positives = files
+        .filter((f) => f.positive)
+        .map((f) => (f.positive_bytes
+          ? `${f.positive} (${(f.positive_bytes / 1e6).toFixed(0)} MB)`
+          : f.positive));
       const errors = files.filter((f) => f.error).map((f) => f.error);
       const developed = positives.length
         ? `<span class="meta">&rarr; ${positives.join(", ")}</span>` : "";
@@ -299,6 +348,36 @@ async function doCapture() {
 }
 
 els.capture.addEventListener("click", doCapture);
+
+// --- capture settings -------------------------------------------------------
+//
+// "change", not "input", on the save location: every keystroke would otherwise
+// try to create a directory named after a half-typed path.
+els.outputDir.addEventListener("change", () => setCapture({ output_dir: els.outputDir.value }));
+
+els.settle.addEventListener("input", () => {
+  const v = Number(els.settle.value);
+  els.settleValue.textContent = `${v.toFixed(1)} s`;
+  setCapture({ settle_delay_s: v });
+});
+
+els.developPositives.addEventListener("change", () =>
+  setCapture({ develop_positives: els.developPositives.checked })
+);
+
+els.positiveFormat.querySelectorAll("button").forEach((button) => {
+  button.addEventListener("click", () => setCapture({ positive_format: button.dataset.value }));
+});
+
+els.tiffCompression.querySelectorAll("button").forEach((button) => {
+  button.addEventListener("click", () => setCapture({ tiff_compression: button.dataset.value }));
+});
+
+els.jpegQuality.addEventListener("input", () => {
+  const v = Number(els.jpegQuality.value);
+  els.jpegQualityValue.textContent = v;
+  setCapture({ jpeg_quality: v });
+});
 
 // --- peaking ----------------------------------------------------------------
 
