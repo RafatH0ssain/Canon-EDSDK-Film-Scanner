@@ -190,6 +190,32 @@ input[type="text"] {
 input[type="text"]:focus { outline: none; border-color: var(--accent); }
 input[type="text"]:disabled { opacity: 0.45; }
 
+input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 9px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+input[type="number"]:focus { outline: none; border-color: var(--accent); }
+
+/* Roll name and frame number sit on one line: they are read together. */
+.roll-line { display: flex; gap: 8px; align-items: flex-end; }
+.roll-line .grow { flex: 1 1 auto; margin-bottom: 8px; }
+.roll-line .narrow { flex: 0 0 84px; margin-bottom: 8px; }
+
+.note code {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.note.bad { color: var(--bad); }
+
 output { color: var(--accent); font-variant-numeric: tabular-nums; }
 
 .note {

@@ -1,22 +1,25 @@
 # CONTEXT — handoff for the next session
 
-**`CLAUDE.md` and `ROADMAP.md` no longer exist** — both were deleted and added
-to `.gitignore`. There are currently no standing instructions beyond this file,
-and no written roadmap. That matters for task 1 below.
+**`CLAUDE.md` and this project's `ROADMAP.md` no longer exist** — both were
+deleted and added to `.gitignore`. The **sibling project's** roadmap survives at
+`d:\projects\Canon Smart Film Scan\ROADMAP.md`, and this project's was derived
+from it — that is where the v0.5 spec was found. Read it before planning
+anything; it is the closest thing to a roadmap this project still has.
 
-**Status: tasks 1–3 of the previous handoff are done, plus a base-scale bug
-fix.** 153 tests pass (was 115). Verified against the real `.HIF` and `.CR3`
-files in `captures/`, but **not yet against a live camera** — see §2.
+**Status: all four queued tasks are done.** 201 tests pass (was 115).
 
 ---
 
-## 1. The one task still queued
+## 1. What is left of the roadmap
 
-### Filename templates — deferred, deliberately
-The user wants configurable names. The previous handoff said to coordinate this
-with the ROADMAP v0.5 spec (structured naming, foldering, per-roll sidecar
-metadata) — and that file is gone. Asked, and the user chose to **defer until
-they restate the spec**. Do not build a throwaway version in the meantime.
+v0.5's **batch re-invert / re-export of a whole roll** was deliberately not
+built. It re-develops positives from originals after tweaking parameters, and
+the user has turned positives off entirely — they keep the RAW and develop
+elsewhere. Real work for a feature their workflow does not use. Revisit only if
+that changes.
+
+v0.4 **corner-by-corner alignment** is unstarted; `corner_sharpness()` exists
+and is tested. v0.6 is exposure locking and per-stock profiles.
 
 ---
 
@@ -42,6 +45,26 @@ backend through a new settable `settle_delay_s` property on both backends.
 back and comparing every pixel. LZW is the default.
 
 **The base-scale bug** (found while verifying, pre-existing, fixed — §3).
+
+**Rolls and naming (v0.5).** `naming.py` renders a template to a path relative
+to the save location; `sidecar.py` maintains `roll.json`. Default
+`{roll}/{roll}_Frame{frame:02d}` → `Roll014/Roll014_Frame07.CR3`. Renaming
+happens in `Session._file_into_roll` *after* download, deliberately: the SDK
+layer pumps messages and marshals transfers and is the last place to put a
+string template. Three decisions worth keeping:
+
+- **A frame is one shutter release, not one file.** RAW+JPEG gives two files
+  sharing a frame number. Getting this wrong doubles every frame number.
+- **A rename that fails leaves the capture where it is** and logs. A badly
+  named capture is a nuisance; a lost one is not recoverable.
+- **A template with no varying field is refused.** Without `{frame}`,
+  `{original}` or `{time}`, every frame renders to one name; `unique()` would
+  keep them all as `-1`, `-2` with no way to tell which was which.
+
+Two bugs caught building it, both of the quiet kind: rejecting `:` anywhere to
+block drive letters also rejected `{frame:02d}`, the default; and `with_suffix`
+turned a roll called `R2.5` into `R2.CR3`, eating the frame number, because it
+read `_Frame07` as the extension.
 
 ---
 

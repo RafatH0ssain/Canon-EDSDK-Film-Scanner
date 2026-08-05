@@ -74,6 +74,25 @@ class CaptureSettings(BaseModel):
     jpeg_quality: int | None = None
 
 
+class RollUpdate(BaseModel):
+    """The roll being scanned, and what is recorded about it."""
+
+    roll: str | None = None
+    frame: int | None = None
+    template: str | None = None
+    stock: str | None = None
+    developer: str | None = None
+    notes: str | None = None
+    date: str | None = None
+    sidecar: bool | None = None
+
+
+class NextRoll(BaseModel):
+    """Start a new roll. Omit the label to increment the current one."""
+
+    roll: str | None = None
+
+
 class BaseSample(BaseModel):
     """Region to sample the film base from, normalised 0-1.
 
@@ -192,6 +211,25 @@ def create_app(config: Config | None = None) -> FastAPI:
     @app.post("/api/sharpness/reset")
     def sharpness_reset() -> dict:
         return session.reset_sharpness_best()
+
+    @app.get("/api/roll")
+    def roll() -> dict:
+        return session.roll_status()
+
+    @app.post("/api/roll")
+    def set_roll(update: RollUpdate) -> dict:
+        try:
+            return session.update_roll(**update.model_dump(exclude_none=True))
+        except ValueError as exc:
+            # NamingError is a ValueError, so a bad template lands here too.
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/roll/next")
+    def roll_next(request: NextRoll) -> dict:
+        try:
+            return session.next_roll(request.roll)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/api/capture/settings")
     def capture_settings() -> dict:

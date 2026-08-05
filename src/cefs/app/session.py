@@ -12,14 +12,17 @@ image processing would stall event delivery.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
 import numpy as np
 
+from cefs import naming, sidecar
 from cefs.backend import CameraBackend, CameraError
 from cefs.config import Config
 from cefs.processing.codec import DecodeError, decode_jpeg, encode_jpeg
@@ -186,6 +189,7 @@ class Session:
                 "error": self._last_error,
                 "view": asdict(self.view),
                 "capture": self.capture_status(),
+                "roll": self.roll_status(),
                 "captures": self._captures,
                 "film": self.film_status(),
             }
@@ -198,6 +202,7 @@ class Session:
             "error": "",
             "view": asdict(self.view),
             "capture": self.capture_status(),
+            "roll": self.roll_status(),
             "capabilities": {
                 "focus_drive": caps.focus_drive,
                 "liveview_zoom": caps.liveview_zoom,
@@ -288,6 +293,94 @@ class Session:
                 raise ValueError(str(exc)) from exc
 
         return self.capture_status()
+
+    # --- the roll -----------------------------------------------------------
+
+    def roll_status(self) -> dict:
+        """Roll label, frame number, metadata, and what the template will do."""
+        roll = self._config.roll
+        status = {
+            "roll": roll.roll,
+            "frame": roll.frame,
+            "template": roll.template,
+            "stock": roll.stock,
+            "developer": roll.developer,
+            "notes": roll.notes,
+            "date": roll.date,
+            "sidecar": roll.sidecar,
+            "fields": list(naming.FIELDS),
+        }
+        # Show the user the answer rather than the rule. A template typo should
+        # be visible before the roll, not discovered after it.
+        try:
+            status["example"] = (
+                naming.example(roll.template, roll=roll.roll, frame=roll.frame,
+                               stock=roll.stock)
+                if roll.template.strip()
+                else "IMG_0001.CR3 (the camera's own name)"
+            )
+            status["template_error"] = ""
+        except naming.NamingError as exc:
+            status["example"] = ""
+            status["template_error"] = str(exc)
+        return status
+
+    def update_roll(self, **changes) -> dict:
+        """Change the roll's label, frame number or metadata.
+
+        Validated here so a bad template is refused while you are looking at
+        the field, rather than at the shutter with a frame already exposed.
+        """
+        roll = self._config.roll
+        changes = {k: v for k, v in changes.items() if v is not None}
+
+        if "template" in changes:
+            template = str(changes["template"])
+            if template.strip():
+                naming.validate_template(template)  # NamingError is a ValueError
+            roll.template = template
+
+        if "roll" in changes:
+            label = naming.sanitise(changes["roll"])
+            if not label:
+                raise ValueError(
+                    "That roll name has no usable characters left once path "
+                    "separators and reserved characters are removed."
+                )
+            roll.roll = label
+
+        if "frame" in changes:
+            frame = int(changes["frame"])
+            if not 0 <= frame <= 99999:
+                raise ValueError(f"Frame number must be 0-99999, got {frame}.")
+            roll.frame = frame
+
+        for key in ("stock", "developer", "notes", "date"):
+            if key in changes:
+                setattr(roll, key, str(changes[key]))
+        if "sidecar" in changes:
+            roll.sidecar = bool(changes["sidecar"])
+
+        return self.roll_status()
+
+    def next_roll(self, label: str | None = None) -> dict:
+        """Start a new roll: reset the frame counter and clear the metadata.
+
+        Without a label, the trailing number in the current one is incremented
+        -- ``Roll014`` becomes ``Roll015`` -- which is the whole point of a
+        button rather than three fields to edit by hand.
+        """
+        roll = self._config.roll
+        if label is None:
+            match = re.search(r"^(.*?)(\d+)(\D*)$", roll.roll)
+            if match:
+                head, digits, tail = match.groups()
+                label = f"{head}{int(digits) + 1:0{len(digits)}d}{tail}"
+            else:
+                label = f"{roll.roll}-2"
+        # The stock and developer usually carry over to the next roll; the
+        # notes are about the roll that just finished, so they do not.
+        return self.update_roll(roll=label, frame=1, notes="")
 
     def update_view(self, **changes) -> dict:
         """Apply view changes from the UI, ignoring unknown keys."""
@@ -508,8 +601,14 @@ class Session:
         if backend is None:
             raise CameraError("Not connected.")
         started = time.perf_counter()
-        paths = [Path(p) for p in backend.capture(self._config.capture.resolved_output_dir())]
+        output_dir = self._config.capture.resolved_output_dir()
+        paths = [Path(p) for p in backend.capture(output_dir)]
         output = self.output_options()
+
+        # One shutter release is one frame, whatever number of files it wrote.
+        frame = self._config.roll.frame
+        when = datetime.now()
+        paths = [self._file_into_roll(p, output_dir, frame, when) for p in paths]
 
         files = []
         for path in paths:
@@ -535,13 +634,83 @@ class Session:
                     logger.error("Could not develop %s: %s", path.name, exc)
             files.append(entry)
 
+        self._write_sidecar(paths, frame, files, when)
+        # Advance even if renaming or the sidecar failed: the shutter fired, so
+        # that frame number is spent, and reusing it would collide next time.
+        self._config.roll.frame = frame + 1
+
         record = {
             "name": files[0]["name"],
             "files": files,
             "count": len(files),
             "bytes": sum(f["bytes"] for f in files),
             "seconds": round(time.perf_counter() - started, 1),
+            "roll": self._config.roll.roll,
+            "frame": frame,
         }
         self._captures.insert(0, record)
         del self._captures[24:]
         return record
+
+    def _file_into_roll(self, path: Path, output_dir: Path, frame: int, when) -> Path:
+        """Rename one downloaded capture into the roll's structure.
+
+        Renaming after the download rather than telling the camera where to put
+        it keeps the SDK layer out of this entirely -- that code has to pump
+        messages and marshal transfers, and is the last place to add a string
+        template.
+
+        A failure here returns the file where it already is. A capture under an
+        unhelpful name is a nuisance; a capture that was moved somewhere
+        unknown, or lost, is not recoverable.
+        """
+        roll = self._config.roll
+        if not roll.template.strip():
+            return path
+        try:
+            relative = naming.render(
+                roll.template,
+                roll=roll.roll,
+                frame=frame,
+                extension=path.suffix,
+                original=path.stem,
+                stock=roll.stock,
+                when=when,
+            )
+            destination = naming.unique(output_dir / Path(relative))
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            path.replace(destination)
+        except (naming.NamingError, OSError) as exc:
+            logger.error("Could not file %s into the roll: %s", path.name, exc)
+            self._last_error = f"Kept the camera's name for {path.name}: {exc}"
+            return path
+        logger.info("Filed %s -> %s", path.name, destination.relative_to(output_dir))
+        return destination
+
+    def _write_sidecar(self, paths: list[Path], frame: int, files: list[dict], when) -> None:
+        """Record the frame in roll.json. Never raises -- it is only metadata."""
+        roll = self._config.roll
+        if not roll.sidecar or not paths:
+            return
+        metadata = sidecar.RollMetadata(
+            roll=roll.roll,
+            stock=roll.stock,
+            developer=roll.developer,
+            notes=roll.notes,
+            date=roll.date,
+        )
+        # Frames can land in more than one folder if the template puts them
+        # there; each folder gets the sidecar describing what is in it.
+        by_folder: dict[Path, list[Path]] = {}
+        for path in paths:
+            by_folder.setdefault(path.parent, []).append(path)
+        positives = {f["name"]: f["positive"] for f in files if f.get("positive")}
+        for folder, group in by_folder.items():
+            sidecar.record_capture(
+                folder / sidecar.SIDECAR_NAME,
+                metadata,
+                frame,
+                [p.name for p in group],
+                [positives[p.name] for p in group if p.name in positives],
+                when=when,
+            )

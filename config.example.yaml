@@ -79,6 +79,38 @@ capture:
   # Quality of a JPEG positive, 1-100. Does not affect TIFF output.
   jpeg_quality: 95
 
+roll:
+  # How captures are named. A camera calls everything IMG_0001 and rolls the
+  # counter at 9999, which says nothing about which roll a scan belongs to.
+  #
+  # Fields: {roll} {frame} {original} {date} {time} {stock}
+  #   {frame:02d} pads the number, and a / makes a folder. At least one of
+  #   {frame}, {original} or {time} must appear, or every frame of the roll
+  #   renders to the same name.
+  #
+  # The roll name is repeated in the filename on purpose: scans get imported
+  # and dragged around, and Roll014_Frame07.CR3 survives being separated from
+  # its folder where Frame07.CR3 does not.
+  #
+  # Leave empty to keep the camera's own filenames.
+  template: "{roll}/{roll}_Frame{frame:02d}"
+
+  # Starting values only -- the UI changes these constantly while scanning and
+  # does not write them back here.
+  roll: "Roll001"
+  frame: 1              # next frame; one per shutter release, not per file
+
+  # Recorded in roll.json beside the frames. Free text; the date accepts
+  # "summer 2019" as readily as an ISO date, because for a found roll that is
+  # the honest answer.
+  stock: ""
+  developer: ""
+  notes: ""
+  date: ""
+
+  # Write roll.json at all.
+  sidecar: true
+
 film:
   # Which inversion pipeline the preview uses by default: "bw" or "color".
   # Both are first-class. This is only the startup default; the UI can switch.

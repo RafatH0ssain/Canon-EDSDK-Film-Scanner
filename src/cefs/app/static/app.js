@@ -27,6 +27,15 @@ const els = {
   capture: $("capture"),
   captureStatus: $("capture-status"),
   captures: $("captures"),
+  rollName: $("roll-name"),
+  rollFrame: $("roll-frame"),
+  rollExample: $("roll-example"),
+  rollNext: $("roll-next"),
+  rollStock: $("roll-stock"),
+  rollDeveloper: $("roll-developer"),
+  rollDate: $("roll-date"),
+  rollNotes: $("roll-notes"),
+  rollTemplate: $("roll-template"),
   settle: $("settle"),
   settleValue: $("settle-value"),
   shutterMode: $("shutter-mode"),
@@ -112,6 +121,7 @@ function render(status) {
   els.lens.textContent = status.lens || "—";
   els.capture.disabled = !connected || capturing;
   if (status.capture) renderCaptureSettings(status.capture);
+  if (status.roll) renderRoll(status.roll);
 
   // Report the shutter honestly. EDSDK exposes no shutter-mode property, so
   // claiming "electronic" here would be asserting something we never set.
@@ -190,6 +200,36 @@ function render(status) {
   }
 }
 
+function renderRoll(roll) {
+  const idle = (el) => document.activeElement !== el;
+  if (idle(els.rollName)) els.rollName.value = roll.roll || "";
+  if (idle(els.rollFrame)) els.rollFrame.value = roll.frame;
+  if (idle(els.rollTemplate)) els.rollTemplate.value = roll.template || "";
+  if (idle(els.rollStock)) els.rollStock.value = roll.stock || "";
+  if (idle(els.rollDeveloper)) els.rollDeveloper.value = roll.developer || "";
+  if (idle(els.rollDate)) els.rollDate.value = roll.date || "";
+  if (idle(els.rollNotes)) els.rollNotes.value = roll.notes || "";
+
+  // Show what the next frame will actually be called. A template is a rule,
+  // and a rule is harder to check than the answer it produces.
+  if (roll.template_error) {
+    els.rollExample.textContent = roll.template_error;
+    els.rollExample.classList.add("bad");
+  } else {
+    els.rollExample.textContent = `Next: ${roll.example}`;
+    els.rollExample.classList.remove("bad");
+  }
+}
+
+async function setRoll(changes) {
+  try {
+    renderRoll(await api("/api/roll", { method: "POST", body: JSON.stringify(changes) }));
+  } catch (err) {
+    toast(err.message, true);
+    await refresh();
+  }
+}
+
 function renderCaptureSettings(capture) {
   // Never yank a control out from under the user. A refresh landing mid-drag
   // or mid-word would rewrite what they are in the middle of setting, so a
@@ -238,6 +278,7 @@ function renderCaptures(items) {
       const mb = (c.bytes / 1e6).toFixed(1);
       const files = c.files || [{ name: c.name }];
       const count = c.count > 1 ? ` &middot; ${c.count} files` : "";
+      const frame = c.frame ? ` &middot; frame ${c.frame}` : "";
       const positives = files
         .filter((f) => f.positive)
         .map((f) => (f.positive_bytes
@@ -249,7 +290,7 @@ function renderCaptures(items) {
       const failed = errors.length
         ? `<span class="meta bad">${errors[0]}</span>` : "";
       return `<li><span class="name">${files.map((f) => f.name).join(", ")}</span>
-              <span class="meta">${mb} MB &middot; ${c.seconds}s${count}</span>
+              <span class="meta">${mb} MB &middot; ${c.seconds}s${count}${frame}</span>
               ${developed}${failed}</li>`;
     })
     .join("");
@@ -335,8 +376,9 @@ async function doCapture() {
   els.captureStatus.textContent = "Settling, then firing…";
   try {
     const entry = await api("/api/capture", { method: "POST" });
-    els.captureStatus.textContent = `Saved ${entry.name}`;
-    toast(`Saved ${entry.name}`);
+    const where = entry.roll ? `${entry.roll} frame ${entry.frame} — ` : "";
+    els.captureStatus.textContent = `${where}saved ${entry.name}`;
+    toast(`${where}saved ${entry.name}`);
     await refresh();
   } catch (err) {
     els.captureStatus.textContent = err.message;
@@ -348,6 +390,28 @@ async function doCapture() {
 }
 
 els.capture.addEventListener("click", doCapture);
+
+// --- roll -------------------------------------------------------------------
+//
+// "change", not "input": these all become path components, and validating a
+// half-typed roll name would reject it on the way to being correct.
+els.rollName.addEventListener("change", () => setRoll({ roll: els.rollName.value }));
+els.rollFrame.addEventListener("change", () => setRoll({ frame: Number(els.rollFrame.value) }));
+els.rollTemplate.addEventListener("change", () => setRoll({ template: els.rollTemplate.value }));
+els.rollStock.addEventListener("change", () => setRoll({ stock: els.rollStock.value }));
+els.rollDeveloper.addEventListener("change", () => setRoll({ developer: els.rollDeveloper.value }));
+els.rollDate.addEventListener("change", () => setRoll({ date: els.rollDate.value }));
+els.rollNotes.addEventListener("change", () => setRoll({ notes: els.rollNotes.value }));
+
+els.rollNext.addEventListener("click", async () => {
+  try {
+    const body = await api("/api/roll/next", { method: "POST", body: JSON.stringify({}) });
+    renderRoll(body);
+    toast(`Now shooting ${body.roll}, frame ${body.frame}`);
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
 
 // --- capture settings -------------------------------------------------------
 //

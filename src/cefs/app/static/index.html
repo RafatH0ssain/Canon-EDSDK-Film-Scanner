@@ -182,6 +182,64 @@
       </div>
 
       <div class="group">
+        <h2>Roll</h2>
+        <div class="roll-line">
+          <label class="row stacked grow">
+            <span>Roll</span>
+            <input type="text" id="roll-name" spellcheck="false" autocomplete="off">
+          </label>
+          <label class="row stacked narrow">
+            <span>Frame</span>
+            <input type="number" id="roll-frame" min="0" max="99999" step="1">
+          </label>
+        </div>
+        <p class="note" id="roll-example">&mdash;</p>
+        <button id="roll-next">Start the next roll</button>
+        <p class="note">
+          Increments the roll number and resets the frame to 1. The frame number
+          advances once per shutter release, so a body set to RAW+JPEG gives two
+          files that share one frame number.
+        </p>
+
+        <label class="row stacked">
+          <span>Film stock</span>
+          <input type="text" id="roll-stock" spellcheck="false" autocomplete="off"
+                 placeholder="Kodak Portra 400">
+        </label>
+        <label class="row stacked">
+          <span>Developer</span>
+          <input type="text" id="roll-developer" spellcheck="false" autocomplete="off"
+                 placeholder="C-41, Cinestill CS41">
+        </label>
+        <label class="row stacked">
+          <span>Date</span>
+          <input type="text" id="roll-date" spellcheck="false" autocomplete="off"
+                 placeholder="2026-08-04, or 'summer 2019'">
+        </label>
+        <label class="row stacked">
+          <span>Notes</span>
+          <input type="text" id="roll-notes" spellcheck="false" autocomplete="off">
+        </label>
+        <p class="note">
+          Written to <code>roll.json</code> beside the frames, and updated after
+          every capture &mdash; so filling one in halfway through the roll still
+          records it. What a negative is cannot be read back off the file six
+          months later unless it was written down at the time.
+        </p>
+
+        <label class="row stacked">
+          <span>Naming template</span>
+          <input type="text" id="roll-template" spellcheck="false" autocomplete="off">
+        </label>
+        <p class="note" id="roll-fields">
+          Fields: <code>{roll}</code> <code>{frame}</code> <code>{original}</code>
+          <code>{date}</code> <code>{time}</code> <code>{stock}</code>.
+          <code>{frame:02d}</code> pads the number, and a <code>/</code> makes a
+          folder. Leave it empty to keep the camera's own filenames.
+        </p>
+      </div>
+
+      <div class="group">
         <h2>Capture</h2>
         <button id="capture" class="primary big" disabled>
           Capture <kbd>Space</kbd>

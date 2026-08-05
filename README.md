@@ -143,11 +143,39 @@ If you keep the RAW and develop it elsewhere, turn positives off: set
 writes one ~35 MB `.CR3` and nothing else. The live preview still inverts, so
 focusing is unaffected.
 
+## Rolls and naming
+
+A camera names everything `IMG_0001` and rolls the counter over at 9999, which
+says nothing about which roll a scan belongs to and eventually collides. So
+captures are filed by roll and frame:
+
+```
+captures/Roll014/Roll014_Frame07.CR3
+                 Roll014_Frame07-positive.tif
+                 roll.json
+```
+
+The template is configurable — fields are `{roll}` `{frame}` `{original}`
+`{date}` `{time}` `{stock}`, `{frame:02d}` pads, and a `/` makes a folder. Leave
+it empty to keep the camera's own names. The roll name is repeated in the
+filename deliberately: scans get imported and moved, and `Roll014_Frame07.CR3`
+survives being separated from its folder where `Frame07.CR3` does not.
+
+**A frame is one shutter release, not one file.** A body set to RAW+JPEG sends
+two files for one release and both take the same frame number, distinguished by
+extension — they are two renderings of one photograph.
+
+`roll.json` records the stock, developer, date and notes beside the frames, and
+is rewritten after every capture, so filling a field in halfway through the roll
+still records it. What a negative *is* cannot be read back off the file months
+later unless it was written down at the time.
+
 ## Honest limitations
 
 - **Corner-by-corner alignment checking is not built yet.** The per-region
   sharpness it needs is present and tested.
-- **Captures keep the camera's filenames.** No roll or frame numbering yet.
+- **No batch re-develop.** Changing inversion settings does not re-export a
+  roll you have already scanned; you would re-develop those frames yourself.
 - **Windows only so far.** The message pump is platform-specific and isolated,
   so macOS and Linux remain possible, but neither is done.
 

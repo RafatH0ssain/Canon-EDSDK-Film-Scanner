@@ -108,6 +108,33 @@ class CaptureConfig:
 
 
 @dataclass
+class RollConfig:
+    """How captures are named, and what is recorded about the roll.
+
+    These are starting values. The UI edits them for the session -- the roll
+    label and frame number in particular change constantly while scanning, and
+    are not written back here.
+    """
+
+    #: See :mod:`cefs.naming` for the fields. Empty disables renaming entirely
+    #: and leaves the camera's own filenames alone.
+    template: str = "{roll}/{roll}_Frame{frame:02d}"
+
+    roll: str = "Roll001"
+    #: Next frame number. One per shutter release, not per file.
+    frame: int = 1
+
+    #: Written to the roll's sidecar. Free text.
+    stock: str = ""
+    developer: str = ""
+    notes: str = ""
+    date: str = ""
+
+    #: Write roll.json beside the frames.
+    sidecar: bool = True
+
+
+@dataclass
 class FilmConfig:
     """Which inversion pipeline the preview starts in."""
 
@@ -130,6 +157,7 @@ class Config:
     liveview: LiveViewConfig = field(default_factory=LiveViewConfig)
     camera: CameraConfig = field(default_factory=CameraConfig)
     capture: CaptureConfig = field(default_factory=CaptureConfig)
+    roll: RollConfig = field(default_factory=RollConfig)
     film: FilmConfig = field(default_factory=FilmConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
 

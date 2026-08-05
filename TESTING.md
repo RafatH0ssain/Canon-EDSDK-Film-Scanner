@@ -242,6 +242,38 @@ file. Timing reference: a 14.6 MB HEIF took ~2.9 s including the 1.5 s settle.
 
 ---
 
+## 7a. The roll
+
+Captures are filed by roll and frame now, so this comes before the capture
+tests rather than after them.
+
+- Set **Roll** to something recognisable and **Frame** to 1.
+- Fill in **Film stock**, **Developer** and **Date**. Leave **Notes** for now.
+- Check the line under the roll name: it should read
+  `Next: Roll014/Roll014_Frame01.CR3`, i.e. the actual name the next shot gets.
+
+Fire two or three frames.
+
+✅ **Good:**
+- Files land in `captures/<roll>/` named `<roll>_FrameNN.CR3`.
+- The frame number advances **once per shot**, not once per file — if you are
+  on RAW+JPEG, both files share a frame number and differ only in extension.
+- `roll.json` sits beside them with the stock and developer you typed.
+- Now type something into **Notes** and fire one more. Re-open `roll.json`:
+  the note is there, and **the earlier frames are still listed**.
+- Press **Start the next roll**: the number increments, the frame resets to 1,
+  and the notes clear. The next shot lands in the new folder.
+
+❌ **Report if:** the frame number jumps by two on a RAW+JPEG shot, `roll.json`
+loses earlier frames when it is rewritten, or a file lands outside
+`captures/`. Any of those is a bug worth stopping for.
+
+> Try a deliberately broken template too — `{nope}/{frame}` — and check it is
+> refused with an explanation *and* that the old template is still in force.
+> A naming bug you discover at the end of a roll has already cost you the roll.
+
+---
+
 ## 7b. Capture settings
 
 All verified on an R7, over the API and by hand in the browser. Kept as a
