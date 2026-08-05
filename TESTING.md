@@ -244,8 +244,8 @@ file. Timing reference: a 14.6 MB HEIF took ~2.9 s including the 1.5 s settle.
 
 ## 7b. Capture settings
 
-New, and none of it has been on hardware yet — the whole section is worth a
-minute.
+All verified on an R7, over the API and by hand in the browser. Kept as a
+regression walkthrough — worth a minute after any change to the Capture panel.
 
 - **Save to.** Type a different folder and press <kbd>Enter</kbd>. The
   **Saving to** line underneath should show the absolute path it resolved to,

@@ -60,9 +60,11 @@ Two things it corrected:
 - **`cv2.imwrite` already defaults to LZW.** Positives were never uncompressed,
   so task 3's premise was wrong; the real gain was deflate. See §5.
 
-Still unretested: fine focus steps at the SDK minimum, from before this
-session. `TESTING.md` §7b walks the settings through by hand in the browser —
-the API path is covered, the visual one is not.
+The user then confirmed the rest by hand: the **browser panel and the new
+capture controls work**, and **fine focus steps at the SDK minimum are
+"phenomenal"** — that was the last thing outstanding from before this session,
+and the reduction to 1×1 was the right call. Nothing in the app is now
+unverified on hardware.
 
 **The user's `config.yaml` now has `develop_positives: false`.** They keep the
 RAW and develop elsewhere, so a positive per capture was 340 MB a shot they
@@ -204,9 +206,16 @@ guarantees the preview matches the saved result.
 ## 7. User feedback so far
 
 Confirmed working on real film: colour inversion ("great"), film base sampling,
-peaking ("works great"), focus drive, live view ("20× better than the Wi-Fi
-version"). Fine focus steps were too coarse and have since been reduced to the
-SDK minimum — **not yet retested by the user.**
+peaking ("works great"), live view ("20× better than the Wi-Fi version"), the
+browser panel and the capture-settings controls.
+
+**Fine focus stepping: "phenomenal".** It had been too coarse, was reduced to
+the SDK minimum (size 1 × 1), and is now confirmed on hardware. Worth
+remembering how that was arrived at, because the obvious method failed: the
+frame-difference metric said 1×1 through 2×8 were indistinguishable, and the
+right answer came from what is useful in the hand at 8× magnification, not from
+what the metric could resolve. Do not "improve" this by re-tuning against a
+whole-frame average.
 
 They asked for **all formats supported: HEIF, JPEG, RAW, CRAW** — all four now
 are. They also asked for configurable filenames, which is the one thing still
