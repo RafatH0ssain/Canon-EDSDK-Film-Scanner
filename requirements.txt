@@ -32,10 +32,12 @@ tifffile>=2024.1,<2027
 # not load on any current Mac, and its rendered output is the wrong input for
 # the inversion anyway, which wants linear sensor data.
 rawpy>=0.22,<1
-# HEIF is what an EOS body writes in HDR PQ mode (.HIF), and this OpenCV build
-# cannot read it. pillow-heif bundles libheif in the wheel, and unlike cv2 it
-# gives us the full 10 bits and the file's colour profile -- which is how we
-# know the samples are PQ-encoded rather than sRGB.
+# HEIF is what an EOS body writes in HDR PQ mode (.HIF). pillow-heif bundles
+# libheif in the wheel and gives us the full 10 bits and the file's colour
+# profile -- which is how we know the samples are PQ-encoded rather than sRGB.
+#
+# It is also the one copyleft dependency: libheif hard-links libx265, so the
+# wheel is GPLv2 and so is any binary built from it. See THIRD-PARTY-NOTICES.md.
 pillow-heif>=0.16,<2
 
 # --- Local web UI -----------------------------------------------------------

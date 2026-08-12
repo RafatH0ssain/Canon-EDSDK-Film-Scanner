@@ -292,9 +292,10 @@ regression walkthrough — worth a minute after any change to the Capture panel.
 - **Positive format.** On *auto*, RAW and HEIF give a `.tif` and JPEG gives a
   `.jpg`. Force **JPEG** and fire on RAW — you should get a small `.jpg`
   instead of a 100 MB TIFF. Useful for a quick contact sheet.
-- **TIFF compression.** Fire the same frame on **none** and on **LZW** and
-  compare the sizes in the **Downloaded** list. Expect roughly half, for about
-  two extra seconds. Deflate is smaller again and noticeably slower.
+- **TIFF compression.** Fire the same frame on **none** and on **deflate** and
+  compare the sizes in the **Downloaded** list. Expect roughly 2.4-2.6x smaller
+  for about five extra seconds. (LZW was removed with OpenCV; a config still
+  asking for it is refused rather than quietly given deflate.)
 
 ❌ **Report if:** a setting reports success but the file says otherwise — a
 wrong folder, a `.tif` when you asked for `.jpg`, or a size that did not change
