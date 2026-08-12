@@ -10,8 +10,11 @@ from __future__ import annotations
 import argparse
 import logging
 import threading
+import time
+import webbrowser
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -22,7 +25,7 @@ from cefs import __version__
 from cefs.app.session import Session
 from cefs.backend import CameraError
 from cefs.config import Config, load_config
-from cefs.paths import static_dir
+from cefs.paths import example_config_path, is_frozen, static_dir, user_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +244,55 @@ def create_app(config: Config | None = None) -> FastAPI:
     return app
 
 
+def prepare_user_folder() -> Path | None:
+    """Create the user's folder and seed a config, on first launch of a bundle.
+
+    A packaged app has no repository to read a config out of and no console to
+    explain itself in. Both are solved by giving the person a real folder with
+    a real ``config.yaml`` in it, which is also where they will have to go to
+    point the app at their own copy of EDSDK.
+
+    Returns the config path, or None when running from a checkout, where the
+    repository already is that folder.
+    """
+    if not is_frozen():
+        return None
+
+    folder = user_data_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "captures").mkdir(exist_ok=True)
+
+    destination = folder / "config.yaml"
+    if not destination.is_file():
+        example = example_config_path()
+        if example.is_file():
+            # Copied, not written from defaults: the example carries the
+            # comments explaining every setting, which is the only
+            # documentation a double-click user is going to meet.
+            destination.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+            logger.info("Created %s", destination)
+    return destination
+
+
+def open_browser_when_ready(url: str, server: Any) -> None:
+    """Open the UI once the server is actually accepting connections.
+
+    Opening immediately races the bind and shows a connection error, which for
+    a double-clicked app looks exactly like the app being broken.
+    """
+
+    def wait_then_open() -> None:
+        deadline = time.perf_counter() + 20.0
+        while time.perf_counter() < deadline:
+            if getattr(server, "started", False):
+                webbrowser.open(url)
+                return
+            time.sleep(0.1)
+        logger.warning("Server did not start within 20 s; not opening a browser.")
+
+    threading.Thread(target=wait_then_open, name="cefs-browser", daemon=True).start()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--host", default=None)
@@ -250,11 +302,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Use the real camera over EDSDK instead of the mock.",
     )
+    parser.add_argument(
+        "--browser",
+        dest="browser",
+        action="store_true",
+        default=None,
+        help="Open the UI in a browser once the server is up (default when packaged).",
+    )
+    parser.add_argument(
+        "--no-browser", dest="browser", action="store_false", help="Never open a browser."
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s"
     )
+    prepare_user_folder()
     config = load_config()
     if args.real:
         config.camera.use_mock = False
@@ -265,12 +328,22 @@ def main(argv: list[str] | None = None) -> int:
     import uvicorn
 
     backend = "mock camera" if config.camera.use_mock else "real camera over EDSDK"
+    url = f"http://{host}:{port}/"
     print(f"Canon EDSDK Film Scanner -- {backend}")
-    print(f"Open http://{host}:{port}/ in a browser.\n")
+    print(f"Open {url} in a browser.")
+    if is_frozen():
+        print(f"Settings and captures: {user_data_dir()}")
+    print()
 
     server = uvicorn.Server(
         uvicorn.Config(create_app(config), host=host, port=port, log_level="warning")
     )
+
+    # Packaged, the browser is the only UI there is, so open it unless told
+    # not to. From a checkout it stays off: restarting the server is something
+    # you do constantly, and a new tab each time is a nuisance.
+    if args.browser or (args.browser is None and is_frozen()):
+        open_browser_when_ready(url, server)
 
     # On macOS the SDK only finds cameras from the main thread, so the web
     # server has to give it up. Everywhere else, and with the mock, the main

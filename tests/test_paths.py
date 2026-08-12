@@ -61,3 +61,53 @@ def test_config_and_captures_follow_the_user_data_root(frozen, monkeypatch):
 
     cfg = Config()
     assert cfg.capture.resolved_output_dir() == frozen / "userdata" / "captures"
+
+
+def test_first_run_seeds_a_config_the_user_can_edit(frozen, monkeypatch, tmp_path):
+    """A packaged first launch must leave a real, commented config behind.
+
+    Writing defaults out instead of copying the example would lose every
+    comment, and those comments are the only documentation a double-click
+    user encounters.
+    """
+    from cefs.app import server as server_module
+
+    # The seed only exists if config.example.yaml is genuinely inside the
+    # bundle. If the build stops shipping it, this fails rather than silently
+    # handing users an app with no settings file.
+    (frozen / "config.example.yaml").write_text(
+        paths.REPO_ROOT.joinpath("config.example.yaml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    folder = tmp_path / "userdata"
+    monkeypatch.setattr(server_module, "user_data_dir", lambda: folder)
+
+    created = server_module.prepare_user_folder()
+
+    assert created == folder / "config.yaml"
+    assert created.is_file()
+    assert (folder / "captures").is_dir()
+    assert "library_dir" in created.read_text(), "the seeded config lost its content"
+    assert "#" in created.read_text(), "the seeded config lost its comments"
+
+
+def test_first_run_never_overwrites_an_existing_config(frozen, monkeypatch, tmp_path):
+    from cefs.app import server as server_module
+
+    folder = tmp_path / "userdata"
+    folder.mkdir()
+    (folder / "config.yaml").write_text("camera:\n  use_mock: false\n")
+    monkeypatch.setattr(server_module, "user_data_dir", lambda: folder)
+
+    server_module.prepare_user_folder()
+
+    assert (folder / "config.yaml").read_text() == "camera:\n  use_mock: false\n"
+
+
+def test_a_checkout_creates_no_user_folder(monkeypatch, tmp_path):
+    from cefs.app import server as server_module
+
+    monkeypatch.setattr(server_module, "user_data_dir", lambda: tmp_path / "should-not-exist")
+    assert server_module.prepare_user_folder() is None
+    assert not (tmp_path / "should-not-exist").exists()
