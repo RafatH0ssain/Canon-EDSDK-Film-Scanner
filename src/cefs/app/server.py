@@ -22,10 +22,11 @@ from cefs import __version__
 from cefs.app.session import Session
 from cefs.backend import CameraError
 from cefs.config import Config, load_config
+from cefs.paths import static_dir
 
 logger = logging.getLogger(__name__)
 
-STATIC_DIR = Path(__file__).parent / "static"
+STATIC_DIR = static_dir()
 _BOUNDARY = "cefsframe"
 
 

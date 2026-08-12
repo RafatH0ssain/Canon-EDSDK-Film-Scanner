@@ -14,8 +14,7 @@ from typing import Any, get_type_hints
 
 import yaml
 
-# The repository root: this file is <root>/src/cefs/config.py.
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from cefs.paths import REPO_ROOT, user_data_dir  # noqa: E402  (re-exported)
 
 _ENV_PREFIX = "CEFS"
 
@@ -25,7 +24,7 @@ def _resolve(value: str) -> Path | None:
     if not value:
         return None
     p = Path(value).expanduser()
-    return p if p.is_absolute() else (REPO_ROOT / p)
+    return p if p.is_absolute() else (user_data_dir() / p)
 
 
 @dataclass
@@ -90,9 +89,9 @@ class CaptureConfig:
     jpeg_quality: int = 95
 
     def resolved_output_dir(self) -> Path:
-        """Absolute output directory, resolving relative paths against the repo."""
+        """Absolute output directory; relative paths follow the user data root."""
         p = Path(self.output_dir).expanduser()
-        return p if p.is_absolute() else (REPO_ROOT / p)
+        return p if p.is_absolute() else (user_data_dir() / p)
 
 
 @dataclass
@@ -206,7 +205,7 @@ def load_config(path: Path | str | None = None) -> Config:
     """
     config = Config()
 
-    config_path = Path(path) if path is not None else REPO_ROOT / "config.yaml"
+    config_path = Path(path) if path is not None else user_data_dir() / "config.yaml"
     if path is not None and not config_path.is_file():
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
