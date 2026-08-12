@@ -110,7 +110,17 @@ def main() -> int:
             "and rebuild."
         )
 
-    size_mb = sum(f.stat().st_size for f in built.rglob("*") if f.is_file()) / 1e6
+    # Skip symlinks. PyInstaller points Contents/Resources at the files in
+    # Contents/Frameworks, and following those counts the same bytes twice --
+    # it reported 428 MB for a bundle that occupies 169 MB on disk.
+    size_mb = (
+        sum(
+            f.stat().st_size
+            for f in built.rglob("*")
+            if f.is_file() and not f.is_symlink()
+        )
+        / 1e6
+    )
     print(f"\nBuilt {built}  ({size_mb:.0f} MB)")
     print("No Canon SDK files in the output.")
     if sys.platform == "darwin":
