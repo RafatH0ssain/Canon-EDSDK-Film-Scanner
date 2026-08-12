@@ -93,12 +93,40 @@ def test_scharr_magnitude_tracks_opencv(frame):
     expected = golden("scharr_magnitude.npy")
 
     assert mag.shape == expected.shape
+
     # Borders differ by construction: OpenCV reflects, and any replacement has
     # to pick something. Interiors are what the metric actually integrates.
     inner = (slice(2, -2), slice(2, -2))
     a, b = mag[inner], expected[inner]
-    assert np.abs(a - b).max() <= 1e-3, "gradient magnitude diverged in the interior"
-    assert abs(a.mean() - b.mean()) / b.mean() < 0.01, "gradient scale shifted"
+
+    # Not bit-exact, and it cannot be. OpenCV's 8-bit luma does not match even
+    # its own documented fixed-point formula -- it takes SIMD paths that round
+    # differently -- so 57 pixels in 19200 land a count apart, and the kernel
+    # multiplies that by up to 10. Measured, that is a mean absolute difference
+    # of 0.0996 against gradients in the hundreds: 0.0046% on the mean. What
+    # must not move is the scale the metric is calibrated against.
+    assert np.abs(a - b).mean() < 0.5, "gradient magnitude diverged pixel to pixel"
+    assert abs(a.mean() - b.mean()) / b.mean() < 0.001, "gradient scale shifted"
+
+
+def test_the_sharpness_readout_does_not_move(frame):
+    """The number the UI, the docs and the refusal threshold all depend on.
+
+    Everything above is machinery; this is the observable. A drift here would
+    silently recalibrate the focus bar and the 0.05 floor that stops
+    check_camera reporting success from noise.
+    """
+    from cefs.processing.sharpness import sharpness
+
+    expected_sharp, expected_blur = golden("sharpness_scalars.npy")
+    blurred = golden("blurred_frame.npy")
+
+    got_sharp, got_blur = sharpness(frame), sharpness(blurred)
+
+    assert abs(got_sharp - expected_sharp) / expected_sharp < 0.001
+    assert abs(got_blur - expected_blur) / expected_blur < 0.001
+    # The separation is what makes the metric useful at all.
+    assert abs((got_sharp / got_blur) - (expected_sharp / expected_blur)) < 0.05
 
 
 # --- resize -----------------------------------------------------------------

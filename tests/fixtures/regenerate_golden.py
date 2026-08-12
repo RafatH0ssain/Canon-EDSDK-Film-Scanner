@@ -82,6 +82,19 @@ def main() -> None:
     other = np.roll(frame, 7, axis=1)
     np.save(HERE / "add_saturated.npy", cv2.add(frame, other, dtype=cv2.CV_8U))
 
+    # --- the numbers the app and the docs actually quote ---------------------
+    # A gradient that shifts by a hundredth of a percent is fine; a sharpness
+    # readout that shifts is not, because the UI bar, the 11.1x separation and
+    # the refusal threshold are all calibrated against these.
+    from cefs.processing.sharpness import sharpness
+
+    blurred = cv2.GaussianBlur(frame, (9, 9), 0)
+    np.save(
+        HERE / "sharpness_scalars.npy",
+        np.array([sharpness(frame), sharpness(blurred)], dtype=np.float64),
+    )
+    np.save(HERE / "blurred_frame.npy", blurred)
+
     # --- 16-bit TIFF round trip ---------------------------------------------
     np.save(HERE / "tiff16_source.npy", img16)
 
