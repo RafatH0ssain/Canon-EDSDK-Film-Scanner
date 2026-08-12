@@ -1,0 +1,41 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # No camera and no SDK are needed: the mock backend covers the whole app,
+    # and the EDSDK layer is only imported, never loaded.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.12"]
+        include:
+          # Cheap check that the supported range still holds.
+          - os: ubuntu-latest
+            python: "3.10"
+          - os: ubuntu-latest
+            python: "3.13"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - run: pip install -r requirements.txt -e ".[dev]"
+
+      - run: pytest -q
+
+      - name: No OpenCV crept back in
+        # Its wheel bundles a GPL FFmpeg this project does not call. Catching a
+        # transitive reintroduction here is cheaper than finding it in a build.
+        run: python -c "import importlib.util as u, sys; sys.exit(u.find_spec('cv2') is not None)"

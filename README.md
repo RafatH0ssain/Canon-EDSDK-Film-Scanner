@@ -1,5 +1,7 @@
 # Canon EDSDK Film Scanner
 
+[![tests](https://github.com/RafatH0ssain/Canon-EDSDK-Film-Scanner/actions/workflows/tests.yml/badge.svg)](https://github.com/RafatH0ssain/Canon-EDSDK-Film-Scanner/actions/workflows/tests.yml)
+
 Scan film negatives with a Canon camera on a copy stand — live positive preview, remote focus and shutter, over USB.
 
 Colour and black-and-white. Verified on an EOS R7 from Windows and macOS.
