@@ -11,7 +11,12 @@ import time
 
 import pytest
 
-from cefs.edsdk.mainthread import EXECUTOR, MainThreadExecutor, run_with_sdk_loop
+from cefs.edsdk.mainthread import (
+    EXECUTOR,
+    REQUIRES_MAIN_THREAD,
+    MainThreadExecutor,
+    run_with_sdk_loop,
+)
 
 
 def _run_loop(ex: MainThreadExecutor) -> threading.Thread:
@@ -84,14 +89,23 @@ def test_run_with_sdk_loop_returns_its_result_and_terminates():
     # Bounded: the failure mode is a hang, and a hanging test is barely better
     # than no test. Run it on a thread and assert it finished, so the bug shows
     # up as a failure with a message instead of a stalled suite.
+    # Only macOS runs a loop at all. Everywhere else run_with_sdk_loop is a
+    # passthrough and there is no queue to submit to -- which is the point of
+    # the platform check, and what this test got wrong until CI ran it on
+    # Linux and Windows.
+    if REQUIRES_MAIN_THREAD:
+        def work() -> int:
+            return EXECUTOR.submit(lambda: 42, "answer")
+    else:
+        def work() -> int:
+            return 42
+
     box: dict[str, object] = {}
 
     def attempt() -> None:
         try:
             for _ in range(25):
-                box["result"] = run_with_sdk_loop(
-                    lambda: EXECUTOR.submit(lambda: 42, "answer")
-                )
+                box["result"] = run_with_sdk_loop(work)
         except BaseException as exc:
             box["error"] = exc
         finally:
@@ -129,3 +143,14 @@ def test_submit_without_a_loop_refuses_rather_than_blocking():
     with pytest.raises(RuntimeError, match="not running"):
         ex.submit(lambda: None, "work")
     assert time.perf_counter() - started < 1.0, "must fail fast, not wait out a timeout"
+
+
+def test_off_macos_the_helper_is_a_passthrough():
+    """Windows and Linux keep their own threading; there is no loop to start.
+
+    Asserting this stops the macOS-shaped assumption creeping back in.
+    """
+    marker = object()
+    assert run_with_sdk_loop(lambda: marker) is marker
+    if not REQUIRES_MAIN_THREAD:
+        assert not EXECUTOR.running, "no loop should be left running off macOS"
