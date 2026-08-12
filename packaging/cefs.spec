@@ -21,6 +21,9 @@ datas = [
     (str(REPO / "src" / "cefs" / "app" / "static"), "cefs/app/static"),
     # Seeds the user's config on first launch, comments and all.
     (str(REPO / "config.example.yaml"), "."),
+    # Attribution for the native libraries this bundle carries. Shipping the
+    # binary without it is the part people forget.
+    (str(REPO / "THIRD-PARTY-NOTICES.md"), "."),
 ]
 
 # Native extensions PyInstaller cannot always see through. rawpy carries

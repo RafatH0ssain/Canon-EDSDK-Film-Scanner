@@ -53,6 +53,44 @@ FORBIDDEN_DIRS = (
 )
 
 
+#: Native libraries THIRD-PARTY-NOTICES.md accounts for.
+#:
+#: Checked after every build. A dependency that quietly starts bundling
+#: something new shows up here as a failure rather than as an undocumented
+#: library in someone else's download.
+NOTICED_LIBRARIES = {
+    "libxau", "libavif", "libcrypto", "libde265", "libheif", "libjasper",
+    "libjpeg", "liblcms2", "liblzma", "libmpdec", "libopenjp2", "libraw_r",
+    "libsharpyuv", "libssl", "libtiff", "libwebp", "libwebpdemux",
+    "libwebpmux", "libx265", "libxcb", "libz", "libpython", "python",
+}
+
+
+def _library_stem(name: str) -> str:
+    """'libwebpmux.3.dylib' -> 'libwebpmux'."""
+    return name.split(".")[0].lower()
+
+
+def audit_notices(root: Path) -> list[str]:
+    """Native libraries in the build that the notices do not mention."""
+    seen = set()
+    for path in root.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        if path.suffix not in (".dylib", ".so", ".dll"):
+            continue
+        # Python extension modules, not standalone libraries: the stdlib's are
+        # covered by the PSF licence and a package's own are covered by that
+        # package. What needs attribution here is the shared libraries a wheel
+        # carries alongside them.
+        if ".cpython-" in path.name or ".abi3." in path.name:
+            continue
+        stem = _library_stem(path.name)
+        if stem and stem not in NOTICED_LIBRARIES and not stem.startswith("_"):
+            seen.add(path.name)
+    return sorted(seen)
+
+
 def check_toolchain() -> None:
     try:
         import PyInstaller  # noqa: F401
@@ -113,6 +151,15 @@ def main() -> int:
     # Skip symlinks. PyInstaller points Contents/Resources at the files in
     # Contents/Frameworks, and following those counts the same bytes twice --
     # it reported 428 MB for a bundle that occupies 169 MB on disk.
+    undocumented = audit_notices(DIST)
+    if undocumented:
+        for name in undocumented[:20]:
+            print(f"  {name}", file=sys.stderr)
+        sys.exit(
+            f"\nRefusing to finish: {len(undocumented)} native librar(y/ies) above are "
+            "not in\nTHIRD-PARTY-NOTICES.md. Check their licences, add them, and rebuild."
+        )
+
     size_mb = (
         sum(
             f.stat().st_size
