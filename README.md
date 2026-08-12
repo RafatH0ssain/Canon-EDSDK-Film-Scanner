@@ -39,7 +39,35 @@ Never commit headers, binaries, or Canon's reference text.
 
 An autofocus lens can be driven from the PC; with a manual lens you focus by hand and keep everything else. Detected automatically.
 
-## Running
+## The app
+
+A packaged build runs by double-clicking — no Python, no checkout. On first
+launch it creates **Documents/Canon EDSDK Film Scanner/**, puts a commented
+`config.yaml` there, opens the UI in your browser, and starts on the mock
+camera so there is something to look at straight away.
+
+**It does not include Canon's SDK, and can't.** EDSDK is licensed per developer
+and may not be redistributed, so driving a real camera still means getting your
+own copy and pointing that `config.yaml` at it — see [Getting EDSDK](#getting-edsdk).
+Without it you get the full UI against the synthetic negative, which is enough
+to judge the inversion, loupe and peaking.
+
+Build it yourself with:
+
+```bash
+pip install pyinstaller
+python packaging/build_app.py
+```
+
+Output lands in `dist/`, around 170 MB. The build **fails rather than finishes**
+if any of Canon's files reach the output — the one mistake here that can't be
+undone once uploaded.
+
+macOS builds are unsigned, so Gatekeeper blocks them on any other Mac. Sharing
+one properly needs an Apple Developer ID and notarisation; locally, right-click
+→ Open.
+
+## Running from source
 
 No SDK, no camera — the default in a fresh clone:
 
@@ -145,8 +173,10 @@ src/cefs/
 ├── processing/      Pure numpy. No SDK, no UI.
 ├── app/             Local web server + browser UI
 ├── mock/            Camera-free backend
+├── paths.py         Where things live, from a checkout and from a bundle
 └── tools/           check_camera, against real hardware
-tests/               213 tests, none needing a camera or the SDK
+packaging/           PyInstaller build for the double-clickable app
+tests/               237 tests, none needing a camera or the SDK
 ```
 
 ## Contributing

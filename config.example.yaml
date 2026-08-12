@@ -25,8 +25,9 @@ edsdk:
   # Windows:  the folder holding EDSDK.dll, e.g. "C:/EDSDK/Dll"
   # macOS:    the folder holding EDSDK.framework, e.g. "edsdk_sdk/Framework"
   #           Canon ships that framework with a broken code signature and it
-  #           will not load until you re-sign it -- see step 4 of the README's
-  #           "Running it". Relative paths resolve against the repo root.
+  #           will not load until you re-sign it -- see "With a real camera"
+  #           in the README. A relative path resolves against the repo root,
+  #           or against the app's own folder when running the packaged build.
   library_dir: "C:/EDSDK/Dll"
 
   # Optional: full path to the library file, if it is not the expected default
@@ -62,8 +63,10 @@ capture:
   # continues rather than refusing to work.
   prefer_electronic_shutter: true
 
-  # Where downloaded captures are written. Relative paths resolve against the
-  # repository root. This directory is git-ignored.
+  # Where downloaded captures are written. A relative path resolves against
+  # the repository root from a checkout, and against
+  # Documents/Canon EDSDK Film Scanner from the packaged app -- which is also
+  # where that build keeps this file. Git-ignored either way.
   output_dir: "captures"
 
   # Delete the file from the camera's card after a verified download.

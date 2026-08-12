@@ -342,6 +342,8 @@ Don't send actual scans — they're git-ignored for a reason, and I don't need t
 | macOS: `cameras detected: 0` | The camera's Wi-Fi is on — it disables USB. Also quit Image Capture and Photos |
 | macOS: `library load disallowed by system policy` | Canon's framework signature is broken as shipped; re-sign it (README step 4) |
 | Live view choppy | The body emits at the taking shutter speed — a slow shutter caps it, not the link |
+| Packaged app: settings ignored | It reads `Documents/Canon EDSDK Film Scanner/config.yaml`, not the repo's |
+| macOS: packaged app won't open | Unsigned build — right-click → Open, or sign and notarise it |
 | Changes not taking effect | Server wasn't restarted |
 | Camera screen stays blank after exit | Power-cycle the body; report it |
 
