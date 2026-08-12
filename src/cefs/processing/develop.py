@@ -24,8 +24,10 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-import cv2
 import numpy as np
+from PIL import Image
+
+from cefs.processing.tiffio import COMPRESSIONS, write_tiff
 
 from cefs.processing.film import (
     FilmParams,
@@ -42,18 +44,21 @@ from cefs.processing.raw import RawUnavailable, decode_raw, is_raw
 
 logger = logging.getLogger(__name__)
 
-#: Formats OpenCV reads directly, all of them 8-bit by the time we see them.
+#: Formats Pillow reads directly, all of them 8-bit by the time we see them.
 _DIRECT_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
 #: What a Canon body calls HEIF, plus the names everything else uses.
 HEIF_EXTENSIONS = {".hif", ".heif", ".heic"}
 
-#: libtiff codes for ``cv2.IMWRITE_TIFF_COMPRESSION``. All lossless -- verified
-#: by reading back and comparing every pixel. Measured on two real 32 MP
-#: positives: none 194 MB / 0.15 s, lzw 162-178 MB (1.1-1.2x) / 2.3 s, deflate
-#: 74-81 MB (2.4-2.6x) / 5 s. Deflate is the default because LZW barely touches
-#: 16-bit continuous tone -- and is what OpenCV writes anyway when told nothing.
-TIFF_COMPRESSION = {"none": 1, "lzw": 5, "deflate": 8}
+#: TIFF compressions offered. Both lossless -- verified by reading back and
+#: comparing every pixel. Measured on two real 32 MP positives: none 194 MB /
+#: 0.15 s, deflate 74-81 MB (2.4-2.6x) / 5 s.
+#:
+#: **LZW was removed** with OpenCV. It needs the ``imagecodecs`` package, which
+#: bundles a pile of codecs for a compression that managed only 1.1-1.2x on
+#: 16-bit continuous tone. Configs still asking for it are refused rather than
+#: quietly given something else.
+TIFF_COMPRESSION = dict.fromkeys(COMPRESSIONS, 0)
 
 POSITIVE_FORMATS = ("auto", "tiff", "jpeg")
 
@@ -217,29 +222,43 @@ def _invert_to_rgb(source: Path, params: FilmParams, base_region) -> tuple[np.nd
         raise DevelopError(
             f"Do not know how to read {source.suffix or 'this file'}.\n"
             f"  RAW goes through LibRaw, HEIF through pillow-heif, and\n"
-            f"  {', '.join(sorted(_DIRECT_EXTENSIONS))} through OpenCV."
+            f"  {', '.join(sorted(_DIRECT_EXTENSIONS))} through Pillow."
         )
 
-    bgr = cv2.imread(str(source), cv2.IMREAD_COLOR)
-    if bgr is None:
-        raise DevelopError(f"Could not read {source.name}. OpenCV would not decode it.")
+    try:
+        with Image.open(source) as handle:
+            rgb_in = np.asarray(handle.convert("RGB"))
+    except Exception as exc:
+        raise DevelopError(f"Could not read {source.name}: {exc}") from exc
+    # Flipped to BGR deliberately: every step below was written against
+    # OpenCV's ordering, and swapping the library is not the moment to also
+    # swap the convention.
+    bgr = np.ascontiguousarray(rgb_in[:, :, ::-1])
     measured = _measure(srgb_to_linear(bgr[:, :, ::-1]), params, base_region)
     return invert_preview(bgr, params, measured)[:, :, ::-1], "8-bit sRGB"
 
 
 def _write(destination: Path, rgb: np.ndarray, output: OutputOptions) -> None:
-    """Write the finished positive. cv2 wants BGR."""
-    bgr = np.ascontiguousarray(rgb[:, :, ::-1])
+    """Write the finished positive.
+
+    RGB in, RGB on disk, no channel swap anywhere. OpenCV used to take BGR and
+    flip it on the way out; tifffile and Pillow do not, and handing either a
+    BGR array puts blue where red belongs in every file -- which on a colour
+    negative looks entirely believable.
+    """
+    data = np.ascontiguousarray(rgb)
     if destination.suffix.lower() in (".tif", ".tiff"):
-        params = [int(cv2.IMWRITE_TIFF_COMPRESSION), TIFF_COMPRESSION[output.tiff_compression]]
-    else:
-        if bgr.dtype == np.uint16:
-            # JPEG is 8-bit only. Asked for explicitly, so honour it rather
-            # than silently writing a TIFF the user did not want.
-            bgr = (bgr >> 8).astype(np.uint8)
-        params = [int(cv2.IMWRITE_JPEG_QUALITY), int(output.jpeg_quality)]
-    if not cv2.imwrite(str(destination), bgr, params):
-        raise DevelopError(f"Could not write {destination}")
+        write_tiff(destination, data, compression=output.tiff_compression)
+        return
+
+    if data.dtype == np.uint16:
+        # JPEG is 8-bit only. Asked for explicitly, so honour it rather
+        # than silently writing a TIFF the user did not want.
+        data = (data >> 8).astype(np.uint8)
+    try:
+        Image.fromarray(data).save(destination, quality=int(output.jpeg_quality))
+    except Exception as exc:
+        raise DevelopError(f"Could not write {destination}: {exc}") from exc
 
 
 def develop(

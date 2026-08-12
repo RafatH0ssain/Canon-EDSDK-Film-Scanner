@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-import cv2
 import numpy as np
+
+from support import read_image_bgr
+from PIL import Image
+
+from cefs.processing.tiffio import read_tiff
 import pytest
 
 from cefs.processing.codec import encode_jpeg
@@ -94,8 +98,8 @@ def test_original_is_untouched(negative_jpeg):
 
 def test_positive_is_actually_inverted(negative_jpeg):
     """Dark negative must give a bright positive, not merely a new file."""
-    original = cv2.imread(str(negative_jpeg), cv2.IMREAD_COLOR)
-    out = cv2.imread(str(develop(negative_jpeg, FilmParams(mode="bw"))), cv2.IMREAD_COLOR)
+    original = read_image_bgr(str(negative_jpeg), as_8bit=True)
+    out = read_image_bgr(str(develop(negative_jpeg, FilmParams(mode="bw"))), as_8bit=True)
     dark = original.mean(axis=2) < np.percentile(original.mean(axis=2), 10)
     assert out.mean(axis=2)[dark].mean() > out.mean(axis=2).mean()
 
@@ -128,13 +132,13 @@ def test_format_can_be_forced_either_way(tmp_path):
 def test_heif_develops_to_a_16_bit_tiff(negative_heif):
     out = develop(negative_heif, FilmParams(mode="color"))
     assert out.suffix == ".tif"
-    image = cv2.imread(str(out), cv2.IMREAD_UNCHANGED)
+    image = read_image_bgr(str(out))
     assert image is not None and image.dtype == np.uint16
 
 
 def test_heif_positive_is_actually_inverted(negative_heif, pq_scene):
     """Dense parts of the negative must come out bright, as for any other source."""
-    out = cv2.imread(str(develop(negative_heif, FilmParams(mode="bw"))), cv2.IMREAD_UNCHANGED)
+    out = read_image_bgr(str(develop(negative_heif, FilmParams(mode="bw"))))
     scene = pq_scene.mean(axis=2)
     dark = scene < np.percentile(scene, 10)
     assert out.mean(axis=2)[dark].mean() > out.mean(axis=2).mean()
@@ -159,8 +163,7 @@ def test_heif_develops_like_the_same_scene_shot_raw(negative_heif, pq_scene):
 
     reference = invert_raw((pq_scene * 65535).astype(np.uint16), FilmParams(mode="color"))
 
-    developed = cv2.imread(str(develop(negative_heif, FilmParams(mode="color"))),
-                           cv2.IMREAD_UNCHANGED)[:, :, ::-1]
+    developed = read_image_bgr(str(develop(negative_heif, FilmParams(mode="color"))))[:, :, ::-1]
     pq_error = np.abs(developed.astype(float) - reference).mean() / 65535
 
     # What decoding the same file as 8-bit sRGB would have produced.
@@ -207,26 +210,18 @@ def test_a_preview_scale_base_cannot_reach_the_file(negative_heif):
     10000 cd/m^2). Carrying the number across collapsed a real .HIF's positive
     from 0.300 to 0.111 standard deviations. develop() must ignore it.
     """
-    plain = cv2.imread(str(develop(negative_heif, FilmParams(mode="color"))),
-                       cv2.IMREAD_UNCHANGED)
-    with_preview_base = cv2.imread(
-        str(develop(negative_heif, FilmParams(mode="color", base=(0.8, 0.75, 0.7)))),
-        cv2.IMREAD_UNCHANGED,
-    )
+    plain = read_image_bgr(str(develop(negative_heif, FilmParams(mode="color"))))
+    with_preview_base = read_image_bgr(str(develop(negative_heif, FilmParams(mode="color", base=(0.8, 0.75, 0.7)))))
     assert np.array_equal(plain, with_preview_base)
 
 
 def test_the_base_region_is_measured_from_the_file(negative_heif):
     """Pointing at a region must change the result, or it is being ignored."""
-    auto = cv2.imread(str(develop(negative_heif, FilmParams(mode="color"))),
-                      cv2.IMREAD_UNCHANGED)
+    auto = read_image_bgr(str(develop(negative_heif, FilmParams(mode="color"))))
     # A patch of the frame that is not the brightest, so its density differs
     # from the automatic 99th-percentile estimate.
-    region = cv2.imread(
-        str(develop(negative_heif, FilmParams(mode="color"),
-                    base_region=(0.4, 0.4, 0.2, 0.2))),
-        cv2.IMREAD_UNCHANGED,
-    )
+    region = read_image_bgr(str(develop(negative_heif, FilmParams(mode="color"),
+                    base_region=(0.4, 0.4, 0.2, 0.2))))
     assert not np.array_equal(auto, region)
 
 
@@ -255,21 +250,33 @@ def test_a_region_over_the_rebate_beats_the_automatic_guess(negative_heif, pq_sc
 # --- output options ----------------------------------------------------------
 
 
-def test_lzw_is_smaller_and_lossless(negative_heif):
-    """Task: a 16-bit positive is far too large uncompressed."""
+def test_deflate_is_smaller_and_lossless(negative_heif):
+    """A 16-bit positive is far too large uncompressed."""
     plain = develop(negative_heif, FilmParams(), output=OutputOptions(tiff_compression="none"))
-    lzw = develop(negative_heif, FilmParams(), output=OutputOptions(tiff_compression="lzw"))
-    assert lzw.stat().st_size < plain.stat().st_size
-    assert np.array_equal(
-        cv2.imread(str(plain), cv2.IMREAD_UNCHANGED),
-        cv2.imread(str(lzw), cv2.IMREAD_UNCHANGED),
+    packed = develop(
+        negative_heif, FilmParams(), output=OutputOptions(tiff_compression="deflate")
     )
+    assert packed.stat().st_size < plain.stat().st_size
+    assert np.array_equal(read_tiff(plain), read_tiff(packed))
+
+
+def test_lzw_is_refused_rather_than_quietly_substituted():
+    """LZW went with OpenCV, and a config asking for it must say so.
+
+    It needed the imagecodecs package -- a pile of bundled codecs -- for a
+    compression measured at 1.1-1.2x against deflate's 2.4-2.6x. Silently
+    writing deflate instead would leave someone believing a setting they no
+    longer have.
+    """
+    with pytest.raises(Exception) as caught:
+        OutputOptions(tiff_compression="lzw").validate()
+    assert "lzw" in str(caught.value).lower()
 
 
 def test_forcing_jpeg_gives_an_8_bit_file(negative_heif):
     out = develop(negative_heif, FilmParams(), output=OutputOptions(format="jpeg"))
     assert out.suffix == ".jpg"
-    assert cv2.imread(str(out), cv2.IMREAD_UNCHANGED).dtype == np.uint8
+    assert np.asarray(Image.open(out)).dtype == np.uint8
 
 
 def test_jpeg_quality_changes_the_file_size(negative_jpeg):

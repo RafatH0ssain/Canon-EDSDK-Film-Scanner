@@ -314,7 +314,7 @@ def _apply_luts(image: np.ndarray, luts: np.ndarray, mode: str) -> np.ndarray:
     if mode == "bw":
         # Collapse first, not last: in "bw" all channels share one base and the
         # output is neutral anyway, so mapping three and averaging does the work
-        # three times. cv2's conversion is SIMD and much faster than numpy here.
+        # three times over.
         grey = to_grey(np.ascontiguousarray(image), order="rgb")
         mapped = luts[1][grey]
         return np.repeat(mapped[:, :, None], 3, axis=2)

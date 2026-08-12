@@ -62,7 +62,7 @@ def _apply_grain(image: np.ndarray, rng: np.random.Generator, strength: float) -
 def _blur(image: np.ndarray, radius: int) -> np.ndarray:
     """Cheap separable box blur simulating defocus.
 
-    Cumulative sums rather than cv2, so this module needs only numpy.
+    Cumulative sums, so this module needs only numpy.
     """
     if radius < 1:
         return image

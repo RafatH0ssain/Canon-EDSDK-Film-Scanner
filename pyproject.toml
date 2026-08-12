@@ -7,7 +7,8 @@ name = "canon-edsdk-film-scanner"
 version = "0.1.0"
 description = "Wired, low-latency remote-control film scanning for Canon cameras over EDSDK/USB, with live positive preview."
 readme = "README.md"
-# Upper bound is opencv-python wheel availability, not a language requirement.
+# Upper bound is native wheel availability (rawpy, pillow-heif), not a language
+# requirement. Untested above 3.13; raise it once those ship wheels you have seen.
 requires-python = ">=3.10,<3.14"
 license = { text = "MIT" }
 authors = [{ name = "Rafat Hossain" }]
@@ -29,7 +30,8 @@ classifiers = [
 dependencies = [
     "PyYAML>=6.0,<7",
     "numpy>=1.26,<3",
-    "opencv-python>=4.10,<5",
+    "Pillow>=10.0,<13",
+    "tifffile>=2024.1,<2027",
     "rawpy>=0.22,<1",
     "pillow-heif>=0.16,<2",
     "fastapi>=0.115,<1",

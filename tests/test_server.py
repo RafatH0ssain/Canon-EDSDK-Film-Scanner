@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 
 import numpy as np
+
+from support import read_image_bgr
 import pytest
 from fastapi.testclient import TestClient
 
@@ -323,7 +325,6 @@ def test_the_sampled_region_reaches_the_saved_positive(connected, tmp_path):
     file gives -- not what the preview's sampled number gives, and not the
     automatic estimate either.
     """
-    import cv2
 
     from cefs.processing.develop import develop
     from cefs.processing.film import FilmParams
@@ -335,20 +336,14 @@ def test_the_sampled_region_reaches_the_saved_positive(connected, tmp_path):
 
     session = connected.app.state.session
     assert session._base_region == tuple(region)
-    written = cv2.imread(str(developed(entry)), cv2.IMREAD_UNCHANGED)
+    written = read_image_bgr(str(developed(entry)))
 
     source = captured(entry)
-    expected = cv2.imread(
-        str(develop(source, session.film, output_dir=tmp_path, base_region=tuple(region))),
-        cv2.IMREAD_UNCHANGED,
-    )
+    expected = read_image_bgr(str(develop(source, session.film, output_dir=tmp_path, base_region=tuple(region))))
     assert np.array_equal(written, expected)
 
     # And the region is genuinely in play, not quietly dropped for the default.
-    automatic = cv2.imread(
-        str(develop(source, FilmParams(mode=session.film.mode), output_dir=tmp_path)),
-        cv2.IMREAD_UNCHANGED,
-    )
+    automatic = read_image_bgr(str(develop(source, FilmParams(mode=session.film.mode), output_dir=tmp_path)))
     assert not np.array_equal(written, automatic)
 
 

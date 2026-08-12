@@ -26,10 +26,13 @@ datas = [
 # Native extensions PyInstaller cannot always see through. rawpy carries
 # LibRaw and pillow_heif carries libheif; both load their binaries at import,
 # so a missed hook shows up as a working app that cannot open a RAW.
+#
+# OpenCV is deliberately absent: its wheel bundled a GPL FFmpeg (x264, x265)
+# that nothing here called.
 hiddenimports = [
     "rawpy",
     "pillow_heif",
-    "cv2",
+    "tifffile",
     "uvicorn.logging",
     "uvicorn.loops.auto",
     "uvicorn.protocols.http.auto",

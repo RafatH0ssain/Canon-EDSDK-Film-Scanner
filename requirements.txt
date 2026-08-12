@@ -8,16 +8,24 @@
 # cannot be redistributed, so you obtain your own copy and point config.yaml
 # at it. The SDK is reached through ctypes, which is in the standard library.
 #
-# Use Python 3.10-3.13. On 3.14 pip currently tries to build opencv-python
-# from source, which fails messily. macOS ships 3.9, which is too old -- use
-# Homebrew's python@3.12 or similar rather than /usr/bin/python3.
+# Use Python 3.10-3.13. Above that, rawpy and pillow-heif may have no wheel yet
+# and pip falls back to building from source, which fails messily. macOS ships
+# 3.9, which is too old -- use Homebrew's python@3.12 rather than
+# /usr/bin/python3.
 
 # --- Config -----------------------------------------------------------------
 PyYAML>=6.0,<7             # config.yaml
 
 # --- Image processing -------------------------------------------------------
 numpy>=1.26,<3
-opencv-python>=4.10,<5     # cv2: JPEG decode/encode, inversion, peaking
+# Pillow for JPEG, tifffile for the 16-bit TIFFs Pillow cannot represent at all.
+#
+# Not OpenCV. Its wheel bundles a GPL-licensed FFmpeg -- x264, x265, aribb24 --
+# which is 49 MB of video codecs this project never calls and a copyleft
+# obligation on anything built from it. All it was doing here was JPEG coding,
+# a resize and a Scharr gradient.
+Pillow>=10.0,<13
+tifffile>=2024.1,<2027
 # EDSDK cannot decode CR3 -- measured, see src/cefs/edsdk/decode.py -- so RAW
 # needs LibRaw. Ships as a wheel on Windows; no compiler required.
 # Not a fallback: Canon's RAW-develop framework is i386-only on macOS and will
