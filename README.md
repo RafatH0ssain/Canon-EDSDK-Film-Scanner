@@ -59,9 +59,16 @@ pip install pyinstaller
 python packaging/build_app.py
 ```
 
-Output lands in `dist/`, around 170 MB. The build **fails rather than finishes**
-if any of Canon's files reach the output — the one mistake here that can't be
-undone once uploaded.
+Output lands in `dist/`, around **66 MB**. The build **fails rather than
+finishes** if any of Canon's files reach the output, or if it bundles a native
+library missing from [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) — the two
+mistakes here that can't be undone once uploaded.
+
+One thing to know before you hand the binary to anyone: it carries **libx265**,
+which is GPL. It arrives via pillow-heif, whose `libheif` hard-links it, so it
+is present even though this app only ever decodes HEIF. Distributing a build
+means meeting that obligation. The notices file spells out what is bundled and
+under what terms.
 
 macOS builds are unsigned, so Gatekeeper blocks them on any other Mac. Sharing
 one properly needs an Apple Developer ID and notarisation; locally, right-click
@@ -128,9 +135,16 @@ Not available over EDSDK: camera-side live-view zoom (the software loupe is the 
 |---|---|---|
 | RAW `.CR3`/`.CR2`, incl. CRAW | LibRaw — EDSDK cannot decode CR3, measured | 16-bit TIFF |
 | HEIF `.HIF` | pillow-heif, 10-bit, PQ transfer read from the file | 16-bit TIFF |
-| JPEG | OpenCV | JPEG |
+| JPEG | Pillow | JPEG |
 
-Chosen by the file, not a setting. TIFF defaults to deflate — 2.4–2.6× lossless on real 32 MP positives, where LZW manages 1.1–1.2×.
+Chosen by the file, not a setting. TIFF is written by `tifffile`, because
+Pillow has no 16-bit-per-channel colour mode and raises on the array outright.
+
+Compression is **none** or **deflate**; deflate is the default at 2.4–2.6×
+lossless on real 32 MP positives. LZW was removed with OpenCV — it needs the
+`imagecodecs` package for a compression measured at 1.1–1.2× on 16-bit
+continuous tone. A config still asking for it is refused rather than quietly
+given deflate.
 
 Keeping the RAW to develop elsewhere? Set `capture.develop_positives: false` and the camera to RAW only: one ~35 MB `.CR3` per shot, and the preview still inverts.
 
@@ -170,7 +184,7 @@ src/cefs/
 ├── naming.py        Template -> Roll014/Roll014_Frame07.CR3
 ├── sidecar.py       The per-roll roll.json
 ├── edsdk/           ctypes bindings and the thread that owns the SDK
-├── processing/      Pure numpy. No SDK, no UI.
+├── processing/      Pure numpy, Pillow and tifffile. No SDK, no UI.
 ├── app/             Local web server + browser UI
 ├── mock/            Camera-free backend
 ├── paths.py         Where things live, from a checkout and from a bundle

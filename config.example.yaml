@@ -86,13 +86,13 @@ capture:
   #   jpeg  always JPEG, which means 8 bits even from a RAW
   positive_format: "auto"
 
-  # TIFF compression: none, lzw or deflate. All three are lossless. Measured on
-  # two real 32 MP positives: none 194 MB in 0.15 s, lzw 162-178 MB (1.1-1.2x)
-  # in 2.3 s, deflate 74-81 MB (2.4-2.6x) in about 5 s.
+  # TIFF compression: none or deflate. Both lossless. Measured on two real
+  # 32 MP positives: none 194 MB in 0.15 s, deflate 74-81 MB (2.4-2.6x) in
+  # about 5 s.
   #
-  # Deflate by default. LZW barely compresses 16-bit continuous tone, and it is
-  # what OpenCV writes anyway when given no setting, so it is not a choice so
-  # much as the absence of one.
+  # LZW was removed along with OpenCV: it needs the imagecodecs package, and it
+  # managed only 1.1-1.2x on 16-bit continuous tone. A config still asking for
+  # it is refused rather than quietly given deflate.
   tiff_compression: "deflate"
 
   # Quality of a JPEG positive, 1-100. Does not affect TIFF output.
