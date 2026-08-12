@@ -30,6 +30,14 @@ from cefs.processing.codec import decode_jpeg
 from cefs.processing.sharpness import sharpness
 
 
+#: Sharpness below which the focus verdict refuses to answer.
+#:
+#: Gated Tenengrad reads ~1.8-4.2 on real frames with detail in them, and
+#: ~0.001 on a fully defocused one. Anything under this is the noise floor, so
+#: the relative change computed from it means nothing.
+_SHARPNESS_FLOOR = 0.05
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--seconds", type=float, default=10.0, help="Measurement duration.")
@@ -126,9 +134,15 @@ def _measure(camera, seconds: float) -> bool:
     print(f"  period     : {1000.0 / fps:.0f} ms" if fps > 0 else "  period     : n/a")
 
     # The stream is capped by config.liveview.target_fps, so this is what the
-    # app actually delivers, not the camera's ceiling. The v0.0 spike measured
-    # the ceiling at ~60 fps.
-    print("  (capped by liveview.target_fps in config; the body can do ~60)")
+    # app delivers, not the body's ceiling -- and that ceiling is not a fixed
+    # number. With exposure simulation the body emits at roughly the taking
+    # shutter speed: measured on an R7, 1/15 gave 15 fps live view (66.8 ms
+    # between frames) and a fast shutter gave 96 fps of genuinely distinct
+    # frames. So a slow shutter makes focusing choppy for reasons that have
+    # nothing to do with the link or the host.
+    print("  (capped by liveview.target_fps in config; the body's own rate")
+    print("   follows the shutter speed, so a slow shutter caps live view")
+    print("   long before USB or the host does)")
     return True
 
 
@@ -151,7 +165,20 @@ def _focus(camera, caps) -> None:
 
     # Two decimal places, not zero: this metric reads in single digits on
     # EDSDK frames, so rounding to integers hides the whole signal.
-    print(f"  sharpness  : {before:.2f} -> {after:.2f} (near) -> {back:.2f} (back)")
+    print(f"  sharpness  : {before:.4f} -> {after:.4f} (near) -> {back:.4f} (back)")
+
+    # A ratio needs a denominator worth dividing by. Below the floor the
+    # reading is noise, and dividing it by the 1e-6 guard below manufactures
+    # certainty from nothing -- measured on a fully defocused frame, three
+    # readings that all print as 0.00 produced "174718% -- focus drive WORKS".
+    # Refusing to answer is the honest result; this tool exists to catch a
+    # focus command that returns OK while moving nothing.
+    if max(before, after, back) < _SHARPNESS_FLOOR:
+        print(f"  verdict    : CANNOT TELL -- no detectable detail (< {_SHARPNESS_FLOOR})")
+        print("               The frame carries no texture to measure, usually")
+        print("               because it is far outside focus. Point the lens at")
+        print("               something it can nearly focus on and run this again.")
+        return
 
     # Relative, because the absolute value depends entirely on the subject.
     # And measured from the image rather than the return code: the v0.0 spike
