@@ -78,6 +78,9 @@ rolls/
 !docs/**/*.png
 !docs/**/*.jpg
 !tests/fixtures/**/*.png
+# Golden JPEG recorded from OpenCV, so the decoder can be held to it. Narrow
+# on purpose: *.jpg above still protects your scans.
+!tests/fixtures/**/*.jpg
 !src/cefs/app/static/**/*.png
 !src/cefs/app/static/**/*.svg
 
