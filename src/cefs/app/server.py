@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -265,7 +266,30 @@ def main(argv: list[str] | None = None) -> int:
     backend = "mock camera" if config.camera.use_mock else "real camera over EDSDK"
     print(f"Canon EDSDK Film Scanner -- {backend}")
     print(f"Open http://{host}:{port}/ in a browser.\n")
-    uvicorn.run(create_app(config), host=host, port=port, log_level="warning")
+
+    server = uvicorn.Server(
+        uvicorn.Config(create_app(config), host=host, port=port, log_level="warning")
+    )
+
+    # On macOS the SDK only finds cameras from the main thread, so the web
+    # server has to give it up. Everywhere else, and with the mock, the main
+    # thread has no special job and uvicorn keeps it.
+    from cefs.edsdk.mainthread import EXECUTOR, REQUIRES_MAIN_THREAD
+
+    if not (REQUIRES_MAIN_THREAD and not config.camera.use_mock):
+        server.run()
+        return 0
+
+    web = threading.Thread(target=server.run, name="cefs-web", daemon=True)
+    web.start()
+    try:
+        EXECUTOR.run_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        EXECUTOR.stop()
+        server.should_exit = True
+        web.join(timeout=10.0)
     return 0
 
 

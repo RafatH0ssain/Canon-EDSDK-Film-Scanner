@@ -177,5 +177,12 @@ def _capture(camera, output_dir: Path) -> None:
     print(f"  total      : {total / 1e6:.1f} MB in {elapsed:.1f} s")
 
 
+def _entry(argv: list[str] | None = None) -> int:
+    """Entry point that gives macOS the main thread the SDK insists on."""
+    from cefs.edsdk.mainthread import run_with_sdk_loop
+
+    return run_with_sdk_loop(lambda: main(argv))
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(_entry())

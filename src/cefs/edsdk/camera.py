@@ -33,6 +33,7 @@ from typing import Any, Callable
 
 from cefs.backend import Capabilities, CameraError, CameraInfo
 from cefs.edsdk import bindings as b
+from cefs.edsdk.mainthread import EXECUTOR, REQUIRES_MAIN_THREAD
 from cefs.edsdk.errors import (
     EDS_ERR_DEVICE_BUSY,
     EDS_ERR_OBJECT_NOTREADY,
@@ -216,10 +217,15 @@ class EdsdkCamera:
         self._object_handler: Any = None
         self._pending_transfers: list[int] = []
 
+        # Main-thread mode only: there is no thread of our own to ask whether
+        # we are up, and the frame clock lives here rather than in a loop local.
+        self._started = False
+        self._next_frame = 0.0
+
     # --- lifecycle ----------------------------------------------------------
 
     def start(self) -> None:
-        """Start the camera thread, connect, and begin live view."""
+        """Connect and begin live view, on whichever thread this platform needs."""
         # Refuse where there is no event dispatch at all, rather than part-way
         # through a capture. Everything up to the shutter would appear to work
         # -- the library loads, the session opens, live view streams, because
@@ -234,19 +240,10 @@ class EdsdkCamera:
                 "  would ever complete.\n"
                 "  Set camera.use_mock: true to run everything except the camera."
             )
-        if sys.platform == "darwin":
-            # Say this out loud every time until a real body has confirmed it.
-            # The design now matches what Canon documents -- a console
-            # application polls EdsGetEvent -- so the earlier worry about
-            # needing the main thread's run loop does not apply. That is a
-            # reason for confidence, not evidence: nothing here has met a
-            # camera, and live view is polled, so it working proves nothing
-            # about whether events arrive.
-            logger.warning(
-                "macOS EDSDK support has not been verified against a camera. "
-                "If a capture times out, event dispatch is the suspect -- "
-                "see pump_messages()."
-            )
+        if REQUIRES_MAIN_THREAD:
+            self._start_on_main_thread()
+            return
+
         if self._thread is not None and self._thread.is_alive():
             return
         self._stopping.clear()
@@ -263,9 +260,57 @@ class EdsdkCamera:
         if self._startup_error is not None:
             raise self._startup_error
 
+    def _start_on_main_thread(self) -> None:
+        """Set up on the main thread, then let its loop drive this camera.
+
+        macOS only. Enumeration returns 0 cameras from anywhere else -- see
+        :mod:`cefs.edsdk.mainthread` for the measurement.
+        """
+        if self._started:
+            return
+        if not EXECUTOR.running:
+            raise CameraError(
+                "The main thread is not running the SDK loop, and on macOS the\n"
+                "  SDK only finds cameras there. Start the app with\n"
+                "  'python -m cefs.app.server', which reserves the main thread."
+            )
+        self._stopping.clear()
+        EXECUTOR.submit(self._on_thread_setup, "connect", timeout=60.0)
+        self._started = True
+        # Only now: a tick that ran before setup would touch a null dll.
+        EXECUTOR.set_tick(self._tick)
+
+    def _tick(self) -> bool:
+        """One pass of the camera loop, driven by whichever loop owns the SDK.
+
+        Returns True when a frame was pulled, so an idle loop can sleep and a
+        busy one does not.
+        """
+        pump_messages(self._dll)
+        now = time.perf_counter()
+        if self._streaming and now >= self._next_frame:
+            # Retry promptly on a miss: only a delivered frame moves the clock.
+            if self._on_thread_pump_frame():
+                self._next_frame = now + self._frame_interval
+                return True
+        return False
+
     def stop(self) -> None:
-        """Stop live view, close the session, and join the thread."""
+        """Stop live view, close the session, and release the SDK."""
         self._stopping.set()
+
+        if REQUIRES_MAIN_THREAD:
+            if not self._started:
+                return
+            # Detach the tick first: teardown frees the dll the tick reads.
+            EXECUTOR.set_tick(None)
+            self._started = False
+            try:
+                EXECUTOR.submit(self._on_thread_teardown, "disconnect", timeout=30.0)
+            except Exception:
+                logger.exception("Camera teardown failed")
+            return
+
         thread = self._thread
         if thread is not None and thread.is_alive():
             thread.join(timeout=15.0)
@@ -332,7 +377,17 @@ class EdsdkCamera:
     def _submit(
         self, fn: Callable[[], Any], label: str, timeout: float = 30.0
     ) -> Any:
-        """Queue work for the camera thread and wait for its result."""
+        """Queue work for whichever thread owns the SDK, and wait for its result."""
+        if REQUIRES_MAIN_THREAD:
+            if not self._started:
+                raise CameraError("Camera is not connected.")
+            try:
+                return EXECUTOR.submit(fn, label, timeout=timeout)
+            except TimeoutError as exc:
+                raise CameraError(
+                    f"Camera command '{label}' timed out after {timeout:.0f} s."
+                ) from exc
+
         if self._thread is None or not self._thread.is_alive():
             raise CameraError("Camera is not connected.")
         command = _Command(fn, label)
@@ -414,8 +469,8 @@ class EdsdkCamera:
 
             now = time.perf_counter()
             if self._streaming and now >= next_frame:
-                self._on_thread_pump_frame()
-                next_frame = now + self._frame_interval
+                if self._on_thread_pump_frame():
+                    next_frame = now + self._frame_interval
             else:
                 # Short sleep: long enough not to spin a core, short enough that
                 # a queued command is picked up promptly.
@@ -580,31 +635,43 @@ class EdsdkCamera:
             b.kEdsPropID_Evf_OutputDevice, b.kEdsEvfOutputDevice_TFT, "Evf_OutputDevice"
         )
 
-    def _on_thread_pump_frame(self) -> None:
-        """Pull one live-view frame into the shared slot."""
+    def _on_thread_pump_frame(self) -> bool:
+        """Pull one live-view frame into the shared slot.
+
+        Returns whether a frame actually arrived, so a caller can retry a miss
+        promptly instead of waiting out a whole frame period. Treating
+        NOT_READY as a delivered frame costs one period per miss and beats
+        against any body whose output rate does not divide into the target.
+
+        This was written while chasing a 15 fps live view on macOS and did
+        **not** fix it -- measured, the body itself emits a frame every 66 ms
+        there, and a fetch costs 8.6 ms against 14401 NOT_READY polls in 8 s.
+        Kept because the old behaviour was wrong regardless, but do not credit
+        it with a rate improvement that was never observed.
+        """
         stream = c_void_p()
         if self._dll.EdsCreateMemoryStream(0, byref(stream)) != EDS_ERR_OK:
-            return
+            return False
         try:
             evf = c_void_p()
             if self._dll.EdsCreateEvfImageRef(stream, byref(evf)) != EDS_ERR_OK:
-                return
+                return False
             try:
                 code = self._dll.EdsDownloadEvfImage(self._camera, evf)
                 if code == EDS_ERR_OBJECT_NOTREADY:
-                    return  # normal: the camera has no new frame yet
+                    return False  # normal: the camera has no new frame yet
                 if code != EDS_ERR_OK:
                     logger.debug("EdsDownloadEvfImage: %s", error_name(code))
-                    return
+                    return False
 
                 length = c_uint64()
                 pointer = c_void_p()
                 if self._dll.EdsGetLength(stream, byref(length)) != EDS_ERR_OK:
-                    return
+                    return False
                 if self._dll.EdsGetPointer(stream, byref(pointer)) != EDS_ERR_OK:
-                    return
+                    return False
                 if not pointer.value or not length.value:
-                    return
+                    return False
                 data = ctypes.string_at(pointer, length.value)
             finally:
                 self._dll.EdsRelease(evf)
@@ -614,6 +681,7 @@ class EdsdkCamera:
         with self._frame_lock:
             self._frame = data
             self._frame_seq += 1
+        return True
 
     # --- focus --------------------------------------------------------------
 
