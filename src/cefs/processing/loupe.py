@@ -7,8 +7,8 @@ offer it over EDSDK.
 
 from __future__ import annotations
 
-import cv2
 import numpy as np
+from PIL import Image
 
 
 def crop_zoom(
@@ -44,11 +44,21 @@ def crop_zoom(
     return _resize(region, target_w, target_h)
 
 
-def _resize(frame: np.ndarray, width: int, height: int) -> np.ndarray:
-    """Nearest-neighbour when enlarging: smooth interpolation invents
-    detail and makes an out-of-focus frame look sharp."""
+def resize_frame(frame: np.ndarray, width: int, height: int) -> np.ndarray:
+    """Resize, choosing the filter by direction.
+
+    Nearest-neighbour when enlarging: smooth interpolation invents detail and
+    makes an out-of-focus frame look sharp, which is the one thing a focus aid
+    must never do. Box-averaging when shrinking, which is what OpenCV's
+    INTER_AREA does and what keeps a downscaled preview representative.
+    """
     if frame.shape[1] == width and frame.shape[0] == height:
         return frame.copy()
     enlarging = width > frame.shape[1] or height > frame.shape[0]
-    interpolation = cv2.INTER_NEAREST if enlarging else cv2.INTER_AREA
-    return cv2.resize(frame, (width, height), interpolation=interpolation)
+    resample = Image.Resampling.NEAREST if enlarging else Image.Resampling.BOX
+    image = Image.fromarray(np.ascontiguousarray(frame))
+    return np.asarray(image.resize((width, height), resample=resample))
+
+
+#: Kept so existing callers do not have to change in the same commit.
+_resize = resize_frame

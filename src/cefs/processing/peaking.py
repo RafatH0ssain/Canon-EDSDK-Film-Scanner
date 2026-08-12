@@ -11,8 +11,9 @@ would get sparser the further you zoom in.
 
 from __future__ import annotations
 
-import cv2
 import numpy as np
+
+from cefs.processing.edges import gradient_magnitude, to_grey_for_edges
 
 DEFAULT_PEAK_COLOR = (0, 0, 255)  # BGR
 
@@ -30,11 +31,7 @@ def edge_strength(frame: np.ndarray) -> np.ndarray:
     Scharr rather than Sobel: the more accurate 3x3 approximation, which matters
     for film grain, which is fine and has no preferred orientation.
     """
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
-    gray = gray.astype(np.float32)
-    dx = cv2.Scharr(gray, cv2.CV_32F, 1, 0)
-    dy = cv2.Scharr(gray, cv2.CV_32F, 0, 1)
-    return cv2.magnitude(dx, dy)
+    return gradient_magnitude(to_grey_for_edges(frame))
 
 
 def threshold_for(sensitivity: float) -> float:

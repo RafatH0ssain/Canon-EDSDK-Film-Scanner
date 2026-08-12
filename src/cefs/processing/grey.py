@@ -20,8 +20,14 @@ _SHIFT = 14
 def to_grey(image: np.ndarray, *, order: str = "bgr") -> np.ndarray:
     """8-bit luma from a colour image.
 
+    The input dtype is preserved. That is not cosmetic: in the 16-bit develop
+    path this result indexes a 65536-entry lookup table, so narrowing it to
+    uint8 quietly collapses the image to 256 levels -- which still looks like a
+    photograph.
+
     Args:
-        image: ``(h, w, 3)`` uint8. Already 2-D input is returned unchanged.
+        image: ``(h, w, 3)`` of any unsigned integer type. Already 2-D input is
+            returned unchanged.
         order: ``"bgr"`` (OpenCV's convention, and this pipeline's for anything
             that came through a JPEG) or ``"rgb"`` (what rawpy hands back).
             Getting this wrong swaps the red and blue weights, which shifts
@@ -35,10 +41,11 @@ def to_grey(image: np.ndarray, *, order: str = "bgr") -> np.ndarray:
     if order not in ("bgr", "rgb"):
         raise ValueError(f"order must be 'bgr' or 'rgb', got {order!r}")
 
-    channels = image.astype(np.uint32)
+    # uint64 so 16-bit inputs cannot overflow the fixed-point multiply.
+    channels = image.astype(np.uint64)
     if order == "rgb":
         channels = channels[:, :, ::-1]
 
     blue, green, red = channels[:, :, 0], channels[:, :, 1], channels[:, :, 2]
     luma = (blue * _B + green * _G + red * _R + _HALF) >> _SHIFT
-    return luma.astype(np.uint8)
+    return luma.astype(image.dtype)

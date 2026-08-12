@@ -21,8 +21,10 @@ import threading
 import time
 from pathlib import Path
 
-import cv2
 import numpy as np
+from PIL import Image
+
+from cefs.processing.arrays import add_saturating
 
 from cefs.backend import Capabilities, CameraError, CameraInfo
 from cefs.mock.frames import make_negative
@@ -160,7 +162,7 @@ class MockCamera:
             # PNG rather than a fake .CR3 so it still decodes: what is modelled
             # is "two files, one release, different extensions".
             sibling = destination.with_suffix(".png")
-            cv2.imwrite(str(sibling), frame)
+            Image.fromarray(frame[:, :, ::-1]).save(sibling)  # BGR array, RGB file
             written.append(sibling)
         return written
 
@@ -212,9 +214,7 @@ class MockCamera:
             started = time.perf_counter()
             with self._lock:
                 focus_error = self._focus_error
-            frame = cv2.add(
-                self._render(focus_error), self._grain_field(), dtype=cv2.CV_8U
-            )
+            frame = add_saturating(self._render(focus_error), self._grain_field())
             data = encode_jpeg(frame)
             with self._lock:
                 self._frame = data

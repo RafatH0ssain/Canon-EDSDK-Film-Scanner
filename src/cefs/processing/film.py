@@ -22,8 +22,9 @@ import dataclasses
 from dataclasses import dataclass
 from functools import cache
 
-import cv2
 import numpy as np
+
+from cefs.processing.grey import to_grey
 
 # Below this a pixel is noise or a clear scratch, and the reciprocal explodes.
 _EPS = 1e-5
@@ -314,7 +315,7 @@ def _apply_luts(image: np.ndarray, luts: np.ndarray, mode: str) -> np.ndarray:
         # Collapse first, not last: in "bw" all channels share one base and the
         # output is neutral anyway, so mapping three and averaging does the work
         # three times. cv2's conversion is SIMD and much faster than numpy here.
-        grey = cv2.cvtColor(np.ascontiguousarray(image), cv2.COLOR_RGB2GRAY)
+        grey = to_grey(np.ascontiguousarray(image), order="rgb")
         mapped = luts[1][grey]
         return np.repeat(mapped[:, :, None], 3, axis=2)
 
