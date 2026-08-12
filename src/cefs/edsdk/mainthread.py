@@ -60,6 +60,16 @@ class MainThreadExecutor:
         """Whether a thread is currently servicing the queue."""
         return self._running.is_set()
 
+    def wait_until_running(self, timeout: float = 10.0) -> bool:
+        """Block until the loop is servicing the queue. True if it is.
+
+        Callers are started before :meth:`run_forever` gets going -- uvicorn in
+        a thread, or the worker in :func:`run_with_sdk_loop` -- so without this
+        the first command can lose a race it did not know it was in, and fail
+        claiming the main thread is not running the SDK.
+        """
+        return self._running.wait(timeout=timeout)
+
     def set_tick(self, tick: Callable[[], bool] | None) -> None:
         """Set the per-iteration callable, or None to idle.
 
@@ -96,6 +106,10 @@ class MainThreadExecutor:
     def run_forever(self) -> None:
         """Service the queue until :meth:`stop`. Call this on the main thread."""
         self._owner_ident = threading.get_ident()
+        # Clear before announcing we are running, so a stop() can only arrive
+        # after the clear. Defence in depth, not the fix: what actually stops
+        # the hang is callers waiting via wait_until_running, and a mutation
+        # test confirmed reordering these two alone changes nothing.
         self._stopping.clear()
         self._running.set()
         logger.info("Main-thread SDK loop running.")
@@ -166,6 +180,8 @@ def run_with_sdk_loop(fn: Callable[[], Any]) -> Any:
 
     def worker() -> None:
         try:
+            if not EXECUTOR.wait_until_running():
+                raise RuntimeError("The main-thread SDK loop never started.")
             box["value"] = fn()
         except BaseException as exc:  # re-raised on the caller's thread below
             box["error"] = exc

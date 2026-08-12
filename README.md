@@ -148,6 +148,29 @@ control — it can fire your shutter.
 | Camera-side live-view zoom | **not available** over EDSDK; the software loupe is the only magnification |
 | Electronic shutter | **not selectable** over EDSDK — set Shutter mode in the camera menu |
 
+### Also measured on macOS (Apple Silicon, same R7)
+
+Every feature above works. The numbers differ where the platform does:
+
+| | macOS | Windows |
+|---|---|---|
+| Live view, app end to end | 27 / 48 / **71.7** fps at `target_fps` 30 / 60 / 120 | 59.79 fps |
+| Live view, body's own rate | 96.5 fps of distinct frames | ~60 fps |
+| Capture download | **31 MB/s** | 26 MB/s |
+| Capture event (`EdsGetEvent`) | 0.51 s from release | via message pump |
+| Focus per press, fine / medium / coarse | 41 / 171 / 512 ms | 22 / 141 / 377 ms |
+| Develop CR3 / HEIF | 5.4 s / 3.9 s | 4.9 s / 3.8–4.0 s |
+
+**Live view runs at the taking shutter speed.** With exposure simulation the
+body emits frames at roughly the shutter, so a slow shutter throttles live
+view long before USB or the host does — measured, 1/15 gave exactly 15 fps
+(66.8 ms between frames) and a fast shutter gave 96.5. If focusing feels
+choppy, check the shutter speed before suspecting anything else.
+
+Focus feel was judged by eye at magnification rather than by the sharpness
+metric, which cannot resolve a fine step: fine stepping is indistinguishable
+from Windows, medium and coarse are proportionate, and peaking behaves.
+
 ## Capture formats
 
 Every format an EOS body writes is developed into a positive, chosen by the
@@ -209,14 +232,12 @@ later unless it was written down at the time.
   sharpness it needs is present and tested.
 - **No batch re-develop.** Changing inversion settings does not re-export a
   roll you have already scanned; you would re-develop those frames yourself.
-- **Real-camera control is verified on Windows only.** The mock backend,
-  processing pipeline, web UI and full test suite run on macOS and Linux too.
-  macOS can now drive a body in principle — event dispatch goes through
-  `EdsGetEvent` and a CFRunLoop spin instead of a Windows message pump — but
-  **no camera has confirmed it**, and until one does, assume it does not work.
-  The specific doubt is threading: Canon's Mac samples dispatch on the main
-  thread's run loop, where this design gives the SDK a thread of its own.
-  Linux is still refused outright rather than half-working.
+- **Linux is refused outright** rather than half-working. Windows and macOS are
+  both verified on an EOS R7. On macOS the SDK must own the **main thread** —
+  it reports zero cameras from anywhere else — so the web server runs on a
+  worker there; see `cefs/edsdk/mainthread.py`. Canon's macOS framework also
+  ships with a broken code signature and needs re-signing before it will load
+  at all (step 4 above).
 
 ## Project layout
 

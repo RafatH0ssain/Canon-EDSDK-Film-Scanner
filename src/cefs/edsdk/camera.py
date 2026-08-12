@@ -268,7 +268,10 @@ class EdsdkCamera:
         """
         if self._started:
             return
-        if not EXECUTOR.running:
+        # Wait rather than fail: the web server starts serving before the main
+        # thread reaches its loop, so a Connect pressed immediately would
+        # otherwise lose a race and blame the platform for a timing accident.
+        if not EXECUTOR.wait_until_running(timeout=10.0):
             raise CameraError(
                 "The main thread is not running the SDK loop, and on macOS the\n"
                 "  SDK only finds cameras there. Start the app with\n"
