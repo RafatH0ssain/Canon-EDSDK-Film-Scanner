@@ -4,7 +4,7 @@ Digitize film negatives with a Canon camera on a copy stand — focusing, framin
 
 Built on [EDSDK](https://developercommunity.usa.canon.com/), Canon's EOS Digital SDK. Works with black-and-white **and** colour negatives.
 
-> **Status: works on real hardware.** Live view, a focus loupe, remote focus stepping, focus peaking, a sharpness readout, and remote capture with a settle delay — all verified on an EOS R7. The premise that justified the project is measured and confirmed: **59.79 fps / 17 ms at 960×640** over USB, against 3.98 fps / 251 ms for the same frame size over Wi-Fi. Details in [spike/README.md](spike/README.md).
+> **Status: works on real hardware, on Windows and macOS.** Live view, a focus loupe, remote focus stepping, focus peaking, a sharpness readout, and remote capture with a settle delay — all verified on an EOS R7 from both. The premise that justified the project is measured and confirmed: **59.79 fps / 17 ms at 960×640** over USB, against 3.98 fps / 251 ms for the same frame size over Wi-Fi. Details in [spike/README.md](spike/README.md).
 >
 > Colour and black-and-white negatives both invert properly, in the preview and in the file written after a capture.
 
@@ -39,9 +39,9 @@ Be clear-eyed about this before starting:
 |---|---|---|
 | Install | `pip install`, nothing else | You must obtain EDSDK from Canon yourself |
 | Connection | Wi-Fi, untethered | USB cable only |
-| Platforms | Windows, macOS, Linux | Windows first; macOS/Pi/Ubuntu possible |
+| Platforms | Windows, macOS, Linux | Windows and macOS, both verified; Linux refused |
 | Live-view frame period | 90–251 ms measured | **17 ms measured** at the larger frame size |
-| Complexity | HTTP and JSON | Native SDK via `ctypes`, single-apartment threading |
+| Complexity | HTTP and JSON | Native SDK via `ctypes`, and one thread must own it |
 
 ## What it deliberately does not do
 
@@ -55,15 +55,18 @@ It is also **not wireless**. If you need to shoot untethered, use the CCAPI proj
 
 1. **Register** with [Canon's Developer Community](https://developercommunity.usa.canon.com/) for your region and request EDSDK access. Approval is not instant.
 2. **Check your camera is supported** on the download page before going further — Canon does not publish the compatibility list openly.
-3. **Download and unpack the SDK.** Keep it *outside* this repository, or in `edsdk_sdk/`, which is git-ignored.
-4. **Point the app at it** by setting `edsdk.library_dir` in `config.yaml`, which is git-ignored. Use the **64-bit** libraries with 64-bit Python; mixing bitness fails at load time with an error that never mentions bitness.
+3. **Download the SDK for your platform.** Windows and macOS are separate downloads; the Windows one will not work on a Mac. Keep it *outside* this repository, or in `edsdk_sdk/`, which is git-ignored.
+4. **Point the app at it** by setting `edsdk.library_dir` in `config.yaml`, which is git-ignored — the folder holding `EDSDK.dll` on Windows, or the one holding `EDSDK.framework` on macOS. Use the **64-bit** libraries with 64-bit Python; mixing bitness fails at load time with an error that never mentions bitness.
+5. **On macOS, re-sign the framework**, or it will not load at all. Canon ships it with a broken signature — see step 4 of [Running it](#running-it).
 
-Never commit the headers, the DLLs, or the reference manual. Never paste Canon's reference text into an issue or a PR — the function names and constants you use in code are fine, Canon's prose is not.
+Note for anyone hoping the RAW-develop bundle adds something: on macOS it cannot. That bundle's `DPP.framework` is **i386**, which macOS has not run since Catalina, so it will not load on any current Mac. `EDSDK.framework` beside it is universal and fine. RAW goes through LibRaw either way — and that is the better path here anyway, since the inversion wants linear sensor data rather than Canon's rendering.
+
+Never commit the headers, the DLLs or frameworks, or the reference manual. Never paste Canon's reference text into an issue or a PR — the function names and constants you use in code are fine, Canon's prose is not.
 
 ## Hardware
 
 - A Canon body supported by EDSDK. The **EOS R7** is the reference camera.
-- A good USB cable — live view is a sustained transfer, not a trickle.
+- A real data cable, plugged **straight into the machine**. Many USB-C cables are wired for USB 2.0 only, and plenty are charge-only. USB 2.0 is enough for live view — measured, it used 8.3 MB/s of a link that sustained 31 MB/s on downloads — so a slow preview is not the cable's fault. It does cap how fast captures land.
 - A macro lens reaching ~1:1 for 35mm, a copy stand, a negative holder, and a backlight (high-CRI for colour).
 
 **Autofocus lens:** focus can be driven from the PC.
@@ -92,9 +95,13 @@ Keyboard: <kbd>Space</kbd> capture · <kbd>←</kbd><kbd>→</kbd> focus
 (<kbd>Shift</kbd> medium, <kbd>Alt</kbd> coarse) · <kbd>I</kbd> invert ·
 <kbd>L</kbd> loupe · <kbd>P</kbd> peaking · <kbd>S</kbd> sharpness.
 
-**With a real camera** — verified on Windows; the macOS path is written but has
-not yet met a body, so treat it as untested:
+**With a real camera** — verified on an EOS R7 from both Windows and macOS:
 
+0. **Turn off the camera's Wi-Fi and Bluetooth.** A Canon body disables its USB
+   data connection while wireless is on, and the symptom is simply
+   `cameras detected: 0` — the camera still appears on the USB bus, so nothing
+   points at the real cause. On macOS also quit **Image Capture** and
+   **Photos**, which claim the camera the moment it is plugged in.
 1. Copy `config.example.yaml` to `config.yaml`.
 2. Set `edsdk.library_dir` to the folder holding the 64-bit library — the one
    containing `EDSDK.dll` on Windows, or `EDSDK.framework` on macOS.
@@ -119,9 +126,9 @@ not yet met a body, so treat it as untested:
    ```bash
    lipo -archs edsdk_sdk/Framework/EDSDK.framework/EDSDK   # arm64 on Apple Silicon
    ```
-   13.20.21 is universal (`x86_64 arm64`), so Apple Silicon needs no Rosetta.
-   An x86_64-only framework cannot be loaded by an arm64 interpreter, and that
-   error does not mention architecture either.
+   The macOS 13.20.10 build is universal (`x86_64 arm64`), so Apple Silicon
+   needs no Rosetta. An x86_64-only framework cannot be loaded by an arm64
+   interpreter, and that error does not mention architecture either.
 5. Check the camera, without firing anything:
    ```bash
    .venv\Scripts\python -m cefs.tools.check_camera --focus   # Windows
@@ -247,24 +254,31 @@ src/cefs/
 ├── config.py        Defaults, then config.yaml, then CEFS_* env vars
 ├── naming.py        Template -> Roll014/Roll014_Frame07.CR3
 ├── sidecar.py       The per-roll roll.json written beside the frames
-├── edsdk/           ctypes bindings + the camera thread. Native, Windows-first.
+├── edsdk/           ctypes bindings + the thread that owns the SDK. Native.
 │   ├── bindings.py      The ONLY place SDK signatures and constants live
-│   ├── camera.py        Camera thread: STA, message pump, command queue
+│   ├── camera.py        Command queue, event pump, live view, capture
+│   ├── mainthread.py    The main-thread SDK loop macOS insists on
+│   ├── decode.py        EDSDK's own decoder, and the record of what it cannot do
 │   └── errors.py        SDK error codes -> messages that name the real cause
 ├── processing/      Pure functions over numpy arrays. No SDK, no UI.
 ├── app/             Local web server + browser UI
 ├── mock/            A fake backend, so development needs no SDK and no camera
 └── tools/           Diagnostics: check_camera reports what a body supports
-tests/               203 tests, all runnable with no camera and no SDK
+tests/               213 tests, all runnable with no camera and no SDK
 ```
 
 The layering matters: it is what lets the colour-inversion work happen with no hardware attached, and it is why roughly half of the sibling project can be ported straight across.
 
 ## Design constraint worth knowing up front
 
-EDSDK delivers events through COM, which requires a **single-threaded-apartment thread running a Windows message pump**. So every SDK call — session, live view, shutter, properties — happens on **one dedicated thread**, and the rest of the app submits commands to it through a queue.
+**One thread owns the SDK.** Every call — session, live view, shutter, properties — happens on it, and the rest of the app submits commands through a queue and waits. That much is true everywhere. *Which* thread is not:
 
-Getting this wrong produces hangs and silently missing events rather than clean errors, which is why the camera thread gets built properly before anything sits on top of it.
+- **Windows.** EDSDK delivers events through COM, so the owner must be a single-threaded-apartment thread running a Windows message pump. Any dedicated thread will do.
+- **macOS.** The owner must be the **main thread**. `EdsGetCameraList` returns `EDS_ERR_OK` and *zero cameras* from anywhere else, and a worker also hangs in `EdsTerminateSDK`. It is not a run-loop problem — giving the worker a running CFRunLoop changes nothing and registers no sources on it. So the web server moves to a worker thread and the main thread runs the SDK loop; see `cefs/edsdk/mainthread.py`.
+
+Events follow the same split: a Windows message pump there, `EdsGetEvent` polled here — which is what Canon documents for a console application.
+
+Getting any of this wrong produces hangs and silently missing events rather than clean errors. Live view is *polled*, so it keeps working when event dispatch is broken; the first thing that actually fails is the capture-complete that never arrives. Do not take a working live view as evidence the threading is right.
 
 ## Contributing
 

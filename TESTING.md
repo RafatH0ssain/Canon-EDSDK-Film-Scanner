@@ -29,10 +29,12 @@ sibling project were exactly this.
 
 ```powershell
 # stop any running server first (Ctrl+C in its window)
-.venv\Scripts\python -m cefs.app.server --real
+.venv\Scripts\python -m cefs.app.server --real     # Windows
+.venv/bin/python -m cefs.app.server --real          # macOS
 ```
 
-Then **Ctrl+Shift+R** in the browser at <http://127.0.0.1:8000/>.
+Then **Ctrl+Shift+R** (**Cmd+Shift+R** on macOS) in the browser at
+<http://127.0.0.1:8000/>.
 
 ---
 
@@ -336,14 +338,18 @@ Don't send actual scans — they're git-ignored for a reason, and I don't need t
 | `SESSION_ALREADY_OPEN` | A previous run crashed. Unplug USB, wait, replug |
 | `cameras detected: 0` | Charge-only cable, camera asleep, or a hub |
 | No frames, but connected | Camera is on a menu or playback screen |
-| Controls do nothing | Stale `app.js` — hard-refresh (Ctrl+Shift+R) |
+| Controls do nothing | Stale `app.js` — hard-refresh (Ctrl+Shift+R, Cmd+Shift+R on macOS) |
+| macOS: `cameras detected: 0` | The camera's Wi-Fi is on — it disables USB. Also quit Image Capture and Photos |
+| macOS: `library load disallowed by system policy` | Canon's framework signature is broken as shipped; re-sign it (README step 4) |
+| Live view choppy | The body emits at the taking shutter speed — a slow shutter caps it, not the link |
 | Changes not taking effect | Server wasn't restarted |
 | Camera screen stays blank after exit | Power-cycle the body; report it |
 
 A camera-free sanity check, any time:
 
 ```powershell
-.venv\Scripts\python -m cefs.tools.check_camera --focus
+.venv\Scripts\python -m cefs.tools.check_camera --focus    # Windows
+.venv/bin/python -m cefs.tools.check_camera --focus         # macOS
 ```
 
 Reports body, lens, capabilities and live-view rate, and confirms focus drive

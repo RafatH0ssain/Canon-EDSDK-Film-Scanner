@@ -23,10 +23,10 @@ edsdk:
   # Keep the SDK outside the repository, or in ./edsdk_sdk/ which is ignored.
   #
   # Windows:  the folder holding EDSDK.dll, e.g. "C:/EDSDK/Dll"
-  # macOS:    the folder holding EDSDK.framework, e.g. "/path/to/edsdk_sdk"
-  #           (real-camera control over EDSDK is Windows-only for now -- see
-  #           the README's Honest limitations -- but the loader itself is
-  #           cross-platform.)
+  # macOS:    the folder holding EDSDK.framework, e.g. "edsdk_sdk/Framework"
+  #           Canon ships that framework with a broken code signature and it
+  #           will not load until you re-sign it -- see step 4 of the README's
+  #           "Running it". Relative paths resolve against the repo root.
   library_dir: "C:/EDSDK/Dll"
 
   # Optional: full path to the library file, if it is not the expected default
@@ -34,8 +34,21 @@ edsdk:
   library_path: ""
 
 liveview:
-  # Frames per second the pump targets. The real ceiling is whatever the camera
-  # delivers -- ~60 on an R7 -- so this only caps how hard we poll.
+  # Frames per second the pump targets. This caps how hard we poll; the real
+  # ceiling is whatever the body delivers.
+  #
+  # That ceiling is not a fixed number. With exposure simulation the camera
+  # emits live view at roughly the **taking shutter speed**, so a slow shutter
+  # throttles the preview long before USB or the host does -- measured on an
+  # R7, 1/15 gave exactly 15 fps (66.8 ms between frames), while a fast
+  # shutter gave 96.5 fps of genuinely distinct frames. If focusing feels
+  # choppy, check the shutter speed first.
+  #
+  # 30 is a safe default. Raising it is worthwhile once the shutter is fast:
+  # measured end to end on macOS, 30 -> 27 fps, 60 -> 48, 120 -> 71.7. Past
+  # that the host is the limit, not the camera -- the inversion pipeline costs
+  # 13.2 ms a frame in colour and 19.0 ms in B&W, so B&W cannot exceed ~52 fps
+  # however high this goes.
   target_fps: 30
 
 capture:

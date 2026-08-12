@@ -1,14 +1,16 @@
 # Canon EDSDK Film Scanner -- runtime + dev dependencies
 #
 # Deliberately small and mainstream. If you are adding a dependency, ask
-# whether a newcomer on Windows can `pip install` it without a compiler.
+# whether a newcomer can `pip install` it without a compiler -- on Windows and
+# on Apple Silicon, both of which are verified against a real camera.
 #
 # Note what is NOT here: EDSDK itself. Canon licenses it per developer and it
 # cannot be redistributed, so you obtain your own copy and point config.yaml
 # at it. The SDK is reached through ctypes, which is in the standard library.
 #
 # Use Python 3.10-3.13. On 3.14 pip currently tries to build opencv-python
-# from source, which fails messily on Windows.
+# from source, which fails messily. macOS ships 3.9, which is too old -- use
+# Homebrew's python@3.12 or similar rather than /usr/bin/python3.
 
 # --- Config -----------------------------------------------------------------
 PyYAML>=6.0,<7             # config.yaml
@@ -18,6 +20,9 @@ numpy>=1.26,<3
 opencv-python>=4.10,<5     # cv2: JPEG decode/encode, inversion, peaking
 # EDSDK cannot decode CR3 -- measured, see src/cefs/edsdk/decode.py -- so RAW
 # needs LibRaw. Ships as a wheel on Windows; no compiler required.
+# Not a fallback: Canon's RAW-develop framework is i386-only on macOS and will
+# not load on any current Mac, and its rendered output is the wrong input for
+# the inversion anyway, which wants linear sensor data.
 rawpy>=0.22,<1
 # HEIF is what an EOS body writes in HDR PQ mode (.HIF), and this OpenCV build
 # cannot read it. pillow-heif bundles libheif in the wheel, and unlike cv2 it
