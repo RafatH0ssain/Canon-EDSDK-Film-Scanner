@@ -64,11 +64,16 @@ finishes** if any of Canon's files reach the output, or if it bundles a native
 library missing from [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) — the two
 mistakes here that can't be undone once uploaded.
 
-One thing to know before you hand the binary to anyone: it carries **libx265**,
-which is GPL. It arrives via pillow-heif, whose `libheif` hard-links it, so it
-is present even though this app only ever decodes HEIF. Distributing a build
-means meeting that obligation. The notices file spells out what is bundled and
-under what terms.
+**The source here is MIT; a built binary is GPL v2.** It bundles pillow-heif's
+wheel, which upstream licenses as GPLv2 because `libheif` hard-links **libx265**
+— present even though this app only ever decodes HEIF. MIT is GPL-compatible,
+so the code stays MIT from source; only the combined binary is GPL. Handing one
+out means shipping the notices and offering the components' source, both of
+which are set up in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and
+`licenses/`.
+
+If you want something permissive to hand out, the sibling **Canon Smart Film
+Scanner** has no copyleft components at all.
 
 macOS builds are unsigned, so Gatekeeper blocks them on any other Mac. Sharing
 one properly needs an Apple Developer ID and notarisation; locally, right-click
@@ -203,4 +208,11 @@ Got another body working? A short report with the latency numbers tells the next
 
 ## Licence
 
-Permissive open source, covering **this project's code only**. Canon's EDSDK and its documentation are Canon's property under separate terms.
+**Source: MIT**, covering this project's code only.
+
+**Binaries: GPL v2.** A packaged build bundles pillow-heif, whose wheel is
+GPLv2 because of libx265. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
+for what that requires if you redistribute one.
+
+Canon's EDSDK and its documentation are Canon's property under separate terms.
+Nothing here grants you any rights to them.

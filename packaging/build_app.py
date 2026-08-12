@@ -151,6 +151,17 @@ def main() -> int:
     # Skip symlinks. PyInstaller points Contents/Resources at the files in
     # Contents/Frameworks, and following those counts the same bytes twice --
     # it reported 428 MB for a bundle that occupies 169 MB on disk.
+    # Compliance material has to be *in* the bundle, not just in the repo.
+    # A build that quietly stops shipping it is a build that cannot legally be
+    # handed to anyone, and nothing else would notice.
+    required = ["THIRD-PARTY-NOTICES.md", "pillow-heif-BUNDLED-LICENSES.txt"]
+    missing = [name for name in required if not list(built.rglob(name))]
+    if missing:
+        sys.exit(
+            f"\nRefusing to finish: {', '.join(missing)} not in the bundle.\n"
+            "The GPL and LGPL components here cannot be redistributed without them."
+        )
+
     undocumented = audit_notices(DIST)
     if undocumented:
         for name in undocumented[:20]:

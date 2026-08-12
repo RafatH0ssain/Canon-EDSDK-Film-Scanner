@@ -24,6 +24,9 @@ datas = [
     # Attribution for the native libraries this bundle carries. Shipping the
     # binary without it is the part people forget.
     (str(REPO / "THIRD-PARTY-NOTICES.md"), "."),
+    # Upstream licence texts, required to redistribute the GPL and LGPL
+    # components this bundle carries.
+    (str(REPO / "licenses"), "licenses"),
 ]
 
 # Native extensions PyInstaller cannot always see through. rawpy carries

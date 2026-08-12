@@ -12,18 +12,50 @@ a dependency quietly adds one.
 > Licences are stated as understood at the time of writing and can change
 > between releases of the upstream projects.
 
-## Copyleft — read these before distributing a binary
+## Licence of the packaged binary: **GPL v2**
 
-| Library | Licence | Comes from | Why it is here |
-|---|---|---|---|
-| **libx265** | **GPL v2 or later** (a commercial licence is available from MulticoreWare) | pillow-heif → libheif | HEIF. `libheif` hard-links it, so it is present even though this app only ever *decodes* HEIF and never encodes it. It cannot be removed without losing HEIF support. |
-| libheif | LGPL v3 | pillow-heif | Reads the `.HIF` files an EOS body writes in HDR PQ mode |
-| libde265 | LGPL v3 | pillow-heif | HEVC decoding inside HEIF |
-| libraw | LGPL v2.1 or CDDL 1.0 | rawpy | Decodes CR3/CR2. EDSDK cannot — measured, see `src/cefs/edsdk/decode.py` |
+The source in this repository stays MIT. **A built `.app` or `.exe` does not.**
 
-Distributing a binary containing **libx265** brings GPL obligations, including
-providing the corresponding source or a written offer for it. The LGPL entries
-have lighter obligations, generally notice plus the ability to relink.
+It bundles pillow-heif's binary wheel, and upstream states the position
+plainly in `licenses/pillow-heif-BUNDLED-LICENSES.txt`:
+
+> License for "pillow-heif" binary wheels: GPLv2, due to base library licenses.
+
+That comes from **libx265**, which `libheif` hard-links even to *decode* HEIF.
+HEIF is not optional here — a Canon body writes `.HIF` in HDR PQ mode and
+reading it is a feature — so the library stays and the binary is GPL v2.
+
+MIT is GPL-compatible, so there is no contradiction: the project's own code
+remains MIT and can be used under those terms from source. Only the combined
+binary is GPL.
+
+### What that requires when you hand someone a build
+
+- **Ship this file and `licenses/`.** Both are inside the bundle already.
+- **Offer the corresponding source.** For the GPL and LGPL components that is
+  upstream, pinned to the versions in the wheel — see the table below. For this
+  project's own code it is the public repository.
+- **Add no further restrictions** on redistribution.
+
+**Written offer:** for three years from the date you received a binary of this
+project, the distributor will supply the complete corresponding source for the
+GPL and LGPL components below, on request, at no more than the cost of
+distribution. In practice each is a public URL, listed here and in
+`licenses/pillow-heif-BUNDLED-LICENSES.txt`.
+
+| Library | Licence | Source |
+|---|---|---|
+| **libx265** | **GPL v2** | https://bitbucket.org/multicoreware/x265_git |
+| libheif | LGPL v3 | https://github.com/strukturag/libheif |
+| libde265 | LGPL v3 | https://github.com/strukturag/libde265 |
+| libraw | LGPL v2.1 / CDDL 1.0 | https://www.libraw.org/download — full text in `licenses/LibRaw-LICENSE.txt` |
+
+Exact pinned versions are in `licenses/pillow-heif-BUNDLED-LICENSES.txt`, copied
+verbatim from the wheel this was built against.
+
+If you would rather ship something permissive, the sibling **Canon Smart Film
+Scanner** has no copyleft components at all — it has no HEIF path, so no
+libx265.
 
 ## Permissive
 
