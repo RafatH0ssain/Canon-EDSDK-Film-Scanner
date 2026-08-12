@@ -75,8 +75,14 @@ Never commit the headers, the DLLs, or the reference manual. Never paste Canon's
 
 ```bash
 python -m venv .venv                      # Python 3.10-3.13, 64-bit
-.venv/Scripts/pip install -r requirements.txt -e .
-.venv/Scripts/python -m cefs.app.server
+
+# macOS/Linux
+.venv/bin/pip install -r requirements.txt -e .
+.venv/bin/python -m cefs.app.server
+
+# Windows
+.venv\Scripts\pip install -r requirements.txt -e .
+.venv\Scripts\python -m cefs.app.server
 ```
 
 Open <http://127.0.0.1:8000/> and press Connect. You get a synthetic film
@@ -86,18 +92,18 @@ Keyboard: <kbd>Space</kbd> capture · <kbd>←</kbd><kbd>→</kbd> focus
 (<kbd>Shift</kbd> medium, <kbd>Alt</kbd> coarse) · <kbd>I</kbd> invert ·
 <kbd>L</kbd> loupe · <kbd>P</kbd> peaking · <kbd>S</kbd> sharpness.
 
-**With a real camera:**
+**With a real camera (Windows only for now — see below):**
 
 1. Copy `config.example.yaml` to `config.yaml`.
 2. Set `edsdk.library_dir` to the folder holding your 64-bit `EDSDK.dll`.
 3. Set `camera.use_mock: false`.
 4. Check the camera first, without firing anything:
    ```bash
-   .venv/Scripts/python -m cefs.tools.check_camera --focus
+   .venv\Scripts\python -m cefs.tools.check_camera --focus
    ```
    This reports the body, lens, capabilities and live-view rate, and confirms
    focus drive actually moves the image. Add `--capture` to fire one test shot.
-5. `.venv/Scripts/python -m cefs.app.server`
+5. `.venv\Scripts\python -m cefs.app.server`
 
 The server binds to loopback. Do not expose it to a network you do not
 control — it can fire your shutter.
@@ -177,8 +183,11 @@ later unless it was written down at the time.
   sharpness it needs is present and tested.
 - **No batch re-develop.** Changing inversion settings does not re-export a
   roll you have already scanned; you would re-develop those frames yourself.
-- **Windows only so far.** The message pump is platform-specific and isolated,
-  so macOS and Linux remain possible, but neither is done.
+- **Real-camera control is Windows only so far.** The EDSDK event pump is COM-
+  based and Windows-specific. The mock backend, processing pipeline, web UI
+  and full test suite already run on macOS and Linux — only the native
+  `edsdk/camera.py` path (talking to an actual body over USB) is Windows-only,
+  and that message pump is isolated, so porting it later remains possible.
 
 ## Project layout
 

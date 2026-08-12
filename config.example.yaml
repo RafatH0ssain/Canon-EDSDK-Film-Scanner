@@ -21,6 +21,12 @@ edsdk:
   # first if loading fails.
   #
   # Keep the SDK outside the repository, or in ./edsdk_sdk/ which is ignored.
+  #
+  # Windows:  the folder holding EDSDK.dll, e.g. "C:/EDSDK/Dll"
+  # macOS:    the folder holding EDSDK.framework, e.g. "/path/to/edsdk_sdk"
+  #           (real-camera control over EDSDK is Windows-only for now -- see
+  #           the README's Honest limitations -- but the loader itself is
+  #           cross-platform.)
   library_dir: "C:/EDSDK/Dll"
 
   # Optional: full path to the library file, if it is not the expected default

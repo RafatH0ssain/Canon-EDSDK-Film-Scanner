@@ -158,6 +158,21 @@ class EdsdkCamera:
 
     def start(self) -> None:
         """Start the camera thread, connect, and begin live view."""
+        # Refuse here rather than part-way through a capture. Everything up to
+        # the shutter would appear to work off Windows -- the library loads, the
+        # session opens, live view streams, because frames are polled rather
+        # than delivered. Only the event callbacks are missing, and the first
+        # thing that needs one is the capture-complete that never arrives: 60 s
+        # of waiting, then an error blaming the memory card.
+        if sys.platform != "win32":
+            raise CameraError(
+                f"Driving a real camera over EDSDK is not supported on "
+                f"{sys.platform} yet -- only Windows is.\n"
+                "  EDSDK delivers its events through a Windows message pump, and\n"
+                "  pump_messages() is a no-op on this platform, so no capture\n"
+                "  would ever complete.\n"
+                "  Set camera.use_mock: true to run everything except the camera."
+            )
         if self._thread is not None and self._thread.is_alive():
             return
         self._stopping.clear()

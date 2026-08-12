@@ -195,13 +195,16 @@ class EdsCapacity(ctypes.Structure):
 
 
 # --- Callback types ----------------------------------------------------------
-# EDSCALLBACK is __stdcall, so WINFUNCTYPE. Keep references to any instance you
-# register alive for as long as the SDK holds it: if Python garbage-collects the
-# trampoline, the SDK calls freed memory and the process dies without a
-# traceback.
-EdsObjectEventHandler = ctypes.WINFUNCTYPE(c_uint32, c_uint32, c_void_p, c_void_p)
-EdsPropertyEventHandler = ctypes.WINFUNCTYPE(c_uint32, c_uint32, c_uint32, c_uint32, c_void_p)
-EdsStateEventHandler = ctypes.WINFUNCTYPE(c_uint32, c_uint32, c_uint32, c_void_p)
+# EDSCALLBACK is __stdcall on Windows, so WINFUNCTYPE there; that attribute
+# does not exist off Windows, where the SDK's calling convention is the
+# platform's normal C one, so CFUNCTYPE is correct instead. Keep references to
+# any instance you register alive for as long as the SDK holds it: if Python
+# garbage-collects the trampoline, the SDK calls freed memory and the process
+# dies without a traceback.
+_FUNCTYPE = ctypes.WINFUNCTYPE if sys.platform == "win32" else ctypes.CFUNCTYPE
+EdsObjectEventHandler = _FUNCTYPE(c_uint32, c_uint32, c_void_p, c_void_p)
+EdsPropertyEventHandler = _FUNCTYPE(c_uint32, c_uint32, c_uint32, c_uint32, c_void_p)
+EdsStateEventHandler = _FUNCTYPE(c_uint32, c_uint32, c_uint32, c_void_p)
 
 
 def _declare(dll: ctypes.WinDLL) -> None:
