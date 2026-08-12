@@ -92,18 +92,44 @@ Keyboard: <kbd>Space</kbd> capture · <kbd>←</kbd><kbd>→</kbd> focus
 (<kbd>Shift</kbd> medium, <kbd>Alt</kbd> coarse) · <kbd>I</kbd> invert ·
 <kbd>L</kbd> loupe · <kbd>P</kbd> peaking · <kbd>S</kbd> sharpness.
 
-**With a real camera (Windows only for now — see below):**
+**With a real camera** — verified on Windows; the macOS path is written but has
+not yet met a body, so treat it as untested:
 
 1. Copy `config.example.yaml` to `config.yaml`.
-2. Set `edsdk.library_dir` to the folder holding your 64-bit `EDSDK.dll`.
+2. Set `edsdk.library_dir` to the folder holding the 64-bit library — the one
+   containing `EDSDK.dll` on Windows, or `EDSDK.framework` on macOS.
 3. Set `camera.use_mock: false`.
-4. Check the camera first, without firing anything:
+4. **On macOS, re-sign the framework before anything will load it.** Canon
+   signs it as `Developer ID Application: Canon Inc.`, but ships it with the
+   seal already broken — several image-processing bundles were added to the
+   framework *after* it was signed. macOS then refuses it with `library load
+   disallowed by system policy`, which never mentions signing. Copy it off the
+   disk image, strip the Finder metadata `codesign` will not sign around, and
+   re-seal it ad-hoc:
    ```bash
-   .venv\Scripts\python -m cefs.tools.check_camera --focus
+   ditto "/Volumes/Macintosh 1/EDSDK/Framework/EDSDK.framework" \
+         edsdk_sdk/Framework/EDSDK.framework
+   find edsdk_sdk/Framework/EDSDK.framework -name .DS_Store -delete
+   xattr -cr edsdk_sdk/Framework/EDSDK.framework
+   codesign --force --deep --sign - edsdk_sdk/Framework/EDSDK.framework
+   codesign --verify --verbose edsdk_sdk/Framework/EDSDK.framework
+   ```
+   The last command must say **`valid on disk`**. Then confirm the
+   architecture matches your Python:
+   ```bash
+   lipo -archs edsdk_sdk/Framework/EDSDK.framework/EDSDK   # arm64 on Apple Silicon
+   ```
+   13.20.21 is universal (`x86_64 arm64`), so Apple Silicon needs no Rosetta.
+   An x86_64-only framework cannot be loaded by an arm64 interpreter, and that
+   error does not mention architecture either.
+5. Check the camera, without firing anything:
+   ```bash
+   .venv\Scripts\python -m cefs.tools.check_camera --focus   # Windows
+   .venv/bin/python -m cefs.tools.check_camera --focus       # macOS
    ```
    This reports the body, lens, capabilities and live-view rate, and confirms
    focus drive actually moves the image. Add `--capture` to fire one test shot.
-5. `.venv\Scripts\python -m cefs.app.server`
+6. `.venv\Scripts\python -m cefs.app.server` (`.venv/bin/…` on macOS)
 
 The server binds to loopback. Do not expose it to a network you do not
 control — it can fire your shutter.
@@ -183,11 +209,14 @@ later unless it was written down at the time.
   sharpness it needs is present and tested.
 - **No batch re-develop.** Changing inversion settings does not re-export a
   roll you have already scanned; you would re-develop those frames yourself.
-- **Real-camera control is Windows only so far.** The EDSDK event pump is COM-
-  based and Windows-specific. The mock backend, processing pipeline, web UI
-  and full test suite already run on macOS and Linux — only the native
-  `edsdk/camera.py` path (talking to an actual body over USB) is Windows-only,
-  and that message pump is isolated, so porting it later remains possible.
+- **Real-camera control is verified on Windows only.** The mock backend,
+  processing pipeline, web UI and full test suite run on macOS and Linux too.
+  macOS can now drive a body in principle — event dispatch goes through
+  `EdsGetEvent` and a CFRunLoop spin instead of a Windows message pump — but
+  **no camera has confirmed it**, and until one does, assume it does not work.
+  The specific doubt is threading: Canon's Mac samples dispatch on the main
+  thread's run loop, where this design gives the SDK a thread of its own.
+  Linux is still refused outright rather than half-working.
 
 ## Project layout
 

@@ -1,11 +1,15 @@
 """The camera thread: one thread owns EDSDK, everything else asks it to work.
 
-EDSDK delivers events through COM, so the thread that called
+On Windows EDSDK delivers events through COM, so the thread that called
 ``EdsInitializeSDK`` must sit in a single-threaded apartment with a running
 Windows message pump. That decides the shape of the whole application: every
 SDK call happens here, everything else submits a callable and waits, and the
 thread must keep pumping or events -- including capture-complete -- never
 arrive. Getting it wrong gives hangs and missing events, not clean errors.
+
+macOS has no message queue, so ``pump_messages`` calls ``EdsGetEvent`` and
+spins this thread's CFRunLoop instead. The shape is unchanged; only the
+dispatch differs. That path is written but **not yet confirmed on a camera**.
 """
 
 from __future__ import annotations
@@ -83,20 +87,78 @@ _EXTRA_TRANSFER_GRACE_S = 1.5
 _BUSY_RETRY_S = 4.0
 
 
-def pump_messages() -> None:
-    """Drain this thread's Windows message queue.
+#: CFRunLoopRunInMode's "I handled something, there may be more" result.
+#: The others (1 Finished, 2 Stopped, 3 TimedOut) all mean the queue is empty.
+_CF_RUN_LOOP_HANDLED_SOURCE = 4
 
-    COM posts EDSDK's event callbacks here. Nothing pumps it for us, and if it
-    is not drained the events never fire -- the symptom is a capture that hangs
-    forever rather than an error.
+
+def _load_core_foundation() -> tuple[Any, Any] | None:
+    """CoreFoundation and kCFRunLoopDefaultMode, or None if unavailable."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        cf = ctypes.CDLL(
+            "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation"
+        )
+        # CFRunLoopRunInMode(CFStringRef mode, CFTimeInterval seconds,
+        #                    Boolean returnAfterSourceHandled) -> SInt32
+        cf.CFRunLoopRunInMode.argtypes = [ctypes.c_void_p, ctypes.c_double, ctypes.c_bool]
+        cf.CFRunLoopRunInMode.restype = ctypes.c_int32
+        return cf, ctypes.c_void_p.in_dll(cf, "kCFRunLoopDefaultMode")
+    except (OSError, ValueError) as exc:  # pragma: no cover - macOS always has it
+        logger.warning("CoreFoundation unavailable, EDSDK events may not arrive: %s", exc)
+        return None
+
+
+#: Resolved once. None off macOS, and off a Mac that somehow lacks CoreFoundation.
+_CORE_FOUNDATION = _load_core_foundation()
+
+
+def pump_messages(dll: Any = None) -> None:
+    """Dispatch any EDSDK events waiting for this thread.
+
+    Nothing pumps for us, and an undispatched event never fires -- the symptom
+    is a capture that hangs forever rather than an error, so every wait loop in
+    this file calls this.
+
+    **Windows** drains the COM message queue: EDSDK posts its callbacks there.
+
+    **macOS** has no message queue, so two things stand in for it, because the
+    SDK may use either and both are cheap:
+
+    - ``EdsGetEvent``, which Canon documents as the call a console application
+      makes regularly to collect events from the camera. This is the mechanism
+      that matters; it is fetched by name rather than assumed -- see
+      ``bindings._declare``.
+    - a non-blocking spin of this thread's CFRunLoop, for anything the SDK
+      registered as a run-loop source. Measured at 0.0011 ms per call when
+      idle, against a 17 ms frame budget.
+
+    Args:
+        dll: The loaded EDSDK library, needed for ``EdsGetEvent`` off Windows.
+            Optional so Windows callers need not thread it through.
     """
-    if sys.platform != "win32":
+    if sys.platform == "win32":
+        msg = wintypes.MSG()
+        user32 = ctypes.windll.user32
+        while user32.PeekMessageW(byref(msg), None, 0, 0, PM_REMOVE):
+            user32.TranslateMessage(byref(msg))
+            user32.DispatchMessageW(byref(msg))
         return
-    msg = wintypes.MSG()
-    user32 = ctypes.windll.user32
-    while user32.PeekMessageW(byref(msg), None, 0, 0, PM_REMOVE):
-        user32.TranslateMessage(byref(msg))
-        user32.DispatchMessageW(byref(msg))
+
+    if dll is not None:
+        get_event = getattr(dll, "EdsGetEvent", None)
+        if get_event is not None:
+            get_event()
+
+    if _CORE_FOUNDATION is not None:
+        cf, mode = _CORE_FOUNDATION
+        # Drain, do not block: seconds=0 returns immediately, and the loop
+        # continues only while a source actually fired. This mirrors the
+        # PeekMessage drain above rather than parking the camera thread.
+        for _ in range(64):
+            if cf.CFRunLoopRunInMode(mode, 0.0, True) != _CF_RUN_LOOP_HANDLED_SOURCE:
+                return
 
 
 class _Command:
@@ -158,20 +220,32 @@ class EdsdkCamera:
 
     def start(self) -> None:
         """Start the camera thread, connect, and begin live view."""
-        # Refuse here rather than part-way through a capture. Everything up to
-        # the shutter would appear to work off Windows -- the library loads, the
-        # session opens, live view streams, because frames are polled rather
-        # than delivered. Only the event callbacks are missing, and the first
-        # thing that needs one is the capture-complete that never arrives: 60 s
-        # of waiting, then an error blaming the memory card.
-        if sys.platform != "win32":
+        # Refuse where there is no event dispatch at all, rather than part-way
+        # through a capture. Everything up to the shutter would appear to work
+        # -- the library loads, the session opens, live view streams, because
+        # frames are polled rather than delivered. Only the callbacks would be
+        # missing, and the first thing needing one is the capture-complete that
+        # never arrives: 60 s of waiting, then an error blaming the memory card.
+        if sys.platform not in ("win32", "darwin"):
             raise CameraError(
                 f"Driving a real camera over EDSDK is not supported on "
-                f"{sys.platform} yet -- only Windows is.\n"
-                "  EDSDK delivers its events through a Windows message pump, and\n"
-                "  pump_messages() is a no-op on this platform, so no capture\n"
+                f"{sys.platform} yet -- Windows and macOS are.\n"
+                "  EDSDK's events would never be dispatched here, so no capture\n"
                 "  would ever complete.\n"
                 "  Set camera.use_mock: true to run everything except the camera."
+            )
+        if sys.platform == "darwin":
+            # Say this out loud every time until a real body has confirmed it.
+            # The design now matches what Canon documents -- a console
+            # application polls EdsGetEvent -- so the earlier worry about
+            # needing the main thread's run loop does not apply. That is a
+            # reason for confidence, not evidence: nothing here has met a
+            # camera, and live view is polled, so it working proves nothing
+            # about whether events arrive.
+            logger.warning(
+                "macOS EDSDK support has not been verified against a camera. "
+                "If a capture times out, event dispatch is the suspect -- "
+                "see pump_messages()."
             )
         if self._thread is not None and self._thread.is_alive():
             return
@@ -335,7 +409,7 @@ class EdsdkCamera:
     def _on_thread_loop(self) -> None:
         next_frame = time.perf_counter()
         while not self._stopping.is_set():
-            pump_messages()
+            pump_messages(self._dll)
             self._drain_commands()
 
             now = time.perf_counter()
@@ -415,7 +489,7 @@ class EdsdkCamera:
                 return code
             # Pump and yield: the busy state usually clears once the in-flight
             # live-view frame completes.
-            pump_messages()
+            pump_messages(self._dll)
             time.sleep(0.05)
 
     def _write_uint(self, prop_id: int, value: int, label: str) -> None:
@@ -555,7 +629,7 @@ class EdsdkCamera:
                 raise EdsError("EdsSendCommand(DriveLensEvf)", code)
             if FOCUS_STEP_PAUSE_S:
                 time.sleep(FOCUS_STEP_PAUSE_S)
-            pump_messages()
+            pump_messages(self._dll)
             self._on_thread_pump_frame()
 
     # --- capture ------------------------------------------------------------
@@ -602,7 +676,7 @@ class EdsdkCamera:
         if self._settle_delay_s > 0:
             deadline = time.perf_counter() + self._settle_delay_s
             while time.perf_counter() < deadline:
-                pump_messages()
+                pump_messages(self._dll)
                 self._on_thread_pump_frame()
                 time.sleep(0.005)
 
@@ -612,7 +686,7 @@ class EdsdkCamera:
         # plain sleep would wait forever.
         deadline = time.perf_counter() + 60.0
         while not self._pending_transfers and time.perf_counter() < deadline:
-            pump_messages()
+            pump_messages(self._dll)
             self._on_thread_pump_frame()
             time.sleep(0.005)
 
@@ -627,7 +701,7 @@ class EdsdkCamera:
         # the shot, so wait a moment for stragglers before draining the queue.
         settle = time.perf_counter() + _EXTRA_TRANSFER_GRACE_S
         while time.perf_counter() < settle:
-            pump_messages()
+            pump_messages(self._dll)
             self._on_thread_pump_frame()
             time.sleep(0.005)
 

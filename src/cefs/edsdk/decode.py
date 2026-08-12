@@ -14,6 +14,14 @@ CR3         OK, "1620x1080/16"   **NOT_SUPPORTED for every target**
 answers happily for a CR3 with 1620x1080/16-bit -- an embedded preview, not a
 decodable image -- so trusting it alone gives a confident wrong answer.
 
+The obvious follow-up was whether Canon's RAW-develop bundle changes that
+answer. **On macOS it cannot be asked.** That bundle ships ``DPP.framework``,
+which does the RAW development, and it is **i386** -- 32-bit, which macOS has
+not run since Catalina. ``EDSDK.framework`` beside it is universal
+(x86_64 + arm64), so the SDK proper is fine on Apple Silicon while its RAW half
+is unloadable on any current Mac. rawpy is not a workaround here; it is the
+only option.
+
 RAW therefore goes through :mod:`cefs.processing.raw`. This module stays for the
 formats EDSDK does handle, and as the executable record of the above. It needs
 ``EdsInitializeSDK`` but no camera session.

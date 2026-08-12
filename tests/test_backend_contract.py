@@ -178,3 +178,50 @@ def _next_frame(camera, seconds: float = 5.0, skip: int = 3) -> bytes:
         else:
             raise AssertionError("No new frame within the time limit.")
     return frame
+
+
+def test_pump_messages_runs_on_this_platform():
+    """The event pump must be callable wherever the package imports.
+
+    Regression guard. ``bindings`` used to build its callback trampolines with
+    ``ctypes.WINFUNCTYPE`` at module scope, which does not exist off Windows, so
+    importing the backend at all raised ``AttributeError`` -- and the pump has
+    a separate implementation per platform, either of which can rot silently
+    because neither runs in the mock. Calling it with no SDK exercises the
+    platform branch this machine actually takes.
+    """
+    from cefs.edsdk.camera import pump_messages
+
+    pump_messages()          # no library: the CFRunLoop/PeekMessage path alone
+    pump_messages(None)      # explicit, same thing
+
+
+def test_pump_messages_uses_eds_get_event_when_the_library_offers_one():
+    """Off Windows the SDK's own dispatch entry point is what delivers events.
+
+    A library without the symbol must not raise: Canon's macOS header has not
+    been read yet, so the call is probed rather than assumed.
+    """
+    import sys
+
+    from cefs.edsdk.camera import pump_messages
+
+    class _WithEvent:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def EdsGetEvent(self) -> int:
+            self.calls += 1
+            return 0
+
+    class _WithoutEvent:
+        pass
+
+    library = _WithEvent()
+    pump_messages(library)
+    pump_messages(_WithoutEvent())  # must not raise
+
+    if sys.platform == "win32":
+        assert library.calls == 0, "Windows dispatches through the message pump"
+    else:
+        assert library.calls == 1, "EdsGetEvent is how a non-Windows build dispatches"

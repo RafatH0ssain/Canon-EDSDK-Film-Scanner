@@ -218,6 +218,21 @@ def _declare(dll: ctypes.WinDLL) -> None:
     dll.EdsTerminateSDK.argtypes = []
     dll.EdsTerminateSDK.restype = err
 
+    # Event dispatch off Windows. Windows delivers callbacks through the COM
+    # message pump; every other build has to ask the SDK for them instead, and
+    # Canon documents this as the call a console application makes regularly to
+    # collect events from the camera -- which is exactly what this project is.
+    #
+    # Signature read from EDSDK.h in the macOS 13.x SDK: no arguments, returns
+    # EdsError. Confirmed exported from the arm64 slice of EDSDK.framework.
+    # Still fetched with getattr rather than assumed, so a build that omits it
+    # degrades to the run-loop spin instead of failing to load at all.
+    if sys.platform != "win32":
+        get_event = getattr(dll, "EdsGetEvent", None)
+        if get_event is not None:
+            get_event.argtypes = []
+            get_event.restype = err
+
     # Reference counting. These return the new count, not an error code.
     dll.EdsRetain.argtypes = [ref]
     dll.EdsRetain.restype = c_uint32
