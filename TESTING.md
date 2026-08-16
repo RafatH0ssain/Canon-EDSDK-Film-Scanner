@@ -64,19 +64,21 @@ Then **Ctrl+Shift+R** (**Cmd+Shift+R** on macOS) in the browser at
 
 ## 1. Connect and check what it detected
 
-Press **Connect**. Within a couple of seconds you should see live view and, in
-the right-hand panel:
+Press **Connect**. Within a couple of seconds you should see live view, the
+body and lens named in the header, and, under **Capture** in the right-hand
+panel:
 
-| Field | Expected on your rig |
-|---|---|
-| Body | `Canon EOS R7` |
-| Lens | `RF85mm F2 MACRO IS STM` |
-| Saving to | your `captures/` path |
-| Shutter | `camera menu` (hover for why) |
+| Field | Where | Expected on your rig |
+|---|---|---|
+| Body | header | `Canon EOS R7` |
+| Lens | header | `RF85mm F2 MACRO IS STM` |
+| Saving to | Capture | your `captures/` path |
+| Shutter | Capture | `camera menu` (hover for why) |
 
-**Focus drive** controls should be visible. If instead you see a message saying
-the lens can't be driven, the AF/MF switch is on MF — that message is the app
-working correctly, not failing.
+The **focus stepper** — six chevrons — should appear in the toolbar floating
+over the picture. If instead **Focus** in the panel shows a message saying the
+lens can't be driven, the AF/MF switch is on MF: that message is the app working
+correctly, not failing.
 
 🔍 **Look for:** the camera's own rear screen goes blank while connected. That is
 expected — live view is routed to the PC. It restores on Disconnect.
@@ -97,9 +99,9 @@ visible jerks. Also check the server window for `WARNING`/`ERROR` lines.
 
 ## 3. Focus loupe
 
-- Tick **Magnified loupe** (or press <kbd>L</kbd>).
+- Turn on **Loupe** in the toolbar over the picture (or press <kbd>L</kbd>).
 - **Click anywhere on the image** — the loupe centres there.
-- Drag the **Zoom** slider from 1× to 12×.
+- Drag **Loupe zoom** under **Focus** from 1× to 12×.
 
 ✅ **Good:** clicking near an edge or corner still gives a full-size view (it
 slides inward rather than shrinking). Magnified pixels look blocky, not smooth —
@@ -116,7 +118,8 @@ with the browser window at an unusual aspect ratio.
 This is the part I'd most like real-world feedback on, because the step sizes
 were calibrated on one scene.
 
-- Tick **Measure continuously** under Sharpness (or press <kbd>S</kbd>).
+- Turn on **Sharpness** in the toolbar (or press <kbd>S</kbd>). A readout
+  appears at the top left of the picture.
 - Put the loupe on a detailed part of the negative — grain, an edge, text.
 - Drive focus with <kbd>←</kbd> and <kbd>→</kbd>:
   - plain = **fine**
@@ -148,8 +151,8 @@ were calibrated on one scene.
 
 ## 5. Focus peaking
 
-- Tick **Highlight sharp edges** (or <kbd>P</kbd>).
-- Sweep the **Sensitivity** slider across its range.
+- Turn on **Peaking** in the toolbar (or <kbd>P</kbd>).
+- Sweep **Peaking sensitivity** under **Focus** across its range.
 - Drive focus in and out while it's on.
 
 ✅ **Good:**
@@ -171,12 +174,12 @@ This is new and the most likely to need tuning on real film.
 
 ### 6a. Compare methods
 
-Under **Preview**, switch **Method** between its two settings on the same frame.
-Untick **Invert to positive** to see the negative itself.
+Under **Image**, switch **Method** between its two settings on the same frame.
+Turn **Invert** off in the toolbar to see the negative itself.
 
 | Setting | What to expect |
 |---|---|
-| Invert unticked | The negative as the camera sees it — orange, inverted tones |
+| Invert off | The negative as the camera sees it — orange, inverted tones |
 | **Linear** | The plain flip. On **colour** film this should look clearly **cyan** |
 | **Film** | The real pipeline: neutral, properly exposed positive |
 
@@ -249,6 +252,7 @@ file. Timing reference: a 14.6 MB HEIF took ~2.9 s including the 1.5 s settle.
 Captures are filed by roll and frame now, so this comes before the capture
 tests rather than after them.
 
+- Open **Roll** in the panel — it starts collapsed, being set once a roll.
 - Set **Roll** to something recognisable and **Frame** to 1.
 - Fill in **Film stock**, **Developer** and **Date**. Leave **Notes** for now.
 - Check the line under the roll name: it should read
@@ -282,13 +286,13 @@ All verified on an R7, over the API and by hand in the browser. Kept as a
 regression walkthrough — worth a minute after any change to the Capture panel.
 
 - **Save to.** Type a different folder and press <kbd>Enter</kbd>. The
-  **Saving to** line underneath should show the absolute path it resolved to,
+  **Saving to** line at the top of **Capture** should show the path it resolved to,
   and the folder should appear on disk. Capture once and check the file landed
   there. Then put it back to `captures`.
 - **Settle delay.** Drag it to 4 s and fire. The pause before the shutter
   should visibly lengthen — it takes effect immediately, with no reconnect.
-- **Develop a positive beside each capture.** Untick, fire: capture only, no
-  positive. Tick it back.
+- **Develop a positive beside each capture.** Switch it off, fire: capture only,
+  no positive. Switch it back on.
 - **Positive format.** On *auto*, RAW and HEIF give a `.tif` and JPEG gives a
   `.jpg`. Force **JPEG** and fire on RAW — you should get a small `.jpg`
   instead of a 100 MB TIFF. Useful for a quick contact sheet.

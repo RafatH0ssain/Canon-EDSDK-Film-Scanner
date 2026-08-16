@@ -68,11 +68,44 @@ const els = {
   filmReset: $("film-reset"),
   filmControls: $("film-controls"),
   filmDisabledNote: $("film-disabled-note"),
+  cameraMeta: $("camera-meta"),
 };
 
 function setSegmented(container, value) {
   container.querySelectorAll("button").forEach((b) =>
     b.classList.toggle("active", b.dataset.value === String(value))
+  );
+}
+
+// --- presentation helpers ---------------------------------------------------
+//
+// Nothing below talks to the server; it only keeps CSS in step with state the
+// stylesheet has no way to read for itself.
+
+// A slider's filled portion. CSS cannot see an input's value, so the position
+// is handed over as a percentage the track's gradient stops at.
+const ranges = [...document.querySelectorAll('input[type="range"]')];
+
+function paintRange(el) {
+  const min = Number(el.min || 0);
+  const max = Number(el.max || 100);
+  const span = max - min;
+  const pct = span > 0 ? ((Number(el.value) - min) / span) * 100 : 0;
+  el.style.setProperty("--range-fill", `${Math.min(100, Math.max(0, pct))}%`);
+}
+
+function paintRanges() { ranges.forEach(paintRange); }
+
+ranges.forEach((el) => el.addEventListener("input", () => paintRange(el)));
+
+// Keyboard shortcuts are pressed dozens of times a session. Animating what
+// they toggle makes the app feel slower than it is, so the transition is
+// suppressed for that one flip and restored once it has landed.
+function toggleInstantly(input) {
+  input.dataset.instant = "";
+  input.checked = !input.checked;
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => delete input.dataset.instant)
   );
 }
 
@@ -115,6 +148,9 @@ function render(status) {
 
   els.model.textContent = status.model || "—";
   els.lens.textContent = status.lens || "—";
+  // Two em-dashes beside a divider is noise; the header hides them until
+  // there is a body to name.
+  els.cameraMeta.dataset.idle = status.model ? "no" : "yes";
   els.capture.disabled = !connected || capturing;
   if (status.capture) renderCaptureSettings(status.capture);
   if (status.roll) renderRoll(status.roll);
@@ -186,6 +222,7 @@ function render(status) {
   }
 
   renderCaptures(status.captures || []);
+  paintRanges();
 
   if (connected && !els.preview.src) {
     // Cache-buster: without it a reconnect can rebind to the closed stream.
@@ -247,6 +284,8 @@ function renderCaptureSettings(capture) {
   els.positiveOptions.querySelectorAll("button, input").forEach((el) => {
     el.disabled = !capture.develop_positives;
   });
+
+  paintRanges();
 }
 
 async function setCapture(changes) {
@@ -585,11 +624,11 @@ document.addEventListener("keydown", (event) => {
   }
 
   const key = event.key.toLowerCase();
-  if (key === "i") { els.invert.checked = !els.invert.checked; setView({ invert: els.invert.checked }); }
-  if (key === "l") { els.loupe.checked = !els.loupe.checked; els.loupe.dispatchEvent(new Event("change")); }
-  if (key === "p") { els.peaking.checked = !els.peaking.checked; setView({ peaking: els.peaking.checked }); }
+  if (key === "i") { toggleInstantly(els.invert); setView({ invert: els.invert.checked }); }
+  if (key === "l") { toggleInstantly(els.loupe); els.loupe.dispatchEvent(new Event("change")); }
+  if (key === "p") { toggleInstantly(els.peaking); setView({ peaking: els.peaking.checked }); }
   if (key === "s") {
-    els.sharpnessOn.checked = !els.sharpnessOn.checked;
+    toggleInstantly(els.sharpnessOn);
     setSharpnessPolling(els.sharpnessOn.checked);
   }
 });

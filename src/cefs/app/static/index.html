@@ -8,16 +8,35 @@
 </head>
 <body>
   <header>
-    <h1>Canon EDSDK Film Scanner</h1>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 20 20" aria-hidden="true">
+        <rect x="1.4" y="4.6" width="17.2" height="12" rx="3.2"/>
+        <circle cx="10" cy="10.6" r="3.6"/>
+        <path d="M6.6 4.6l1.1-2h4.6l1.1 2"/>
+      </svg>
+      <h1>Film Scanner</h1>
+    </div>
+
+    <div class="camera-meta" id="camera-meta">
+      <span id="model">&mdash;</span>
+      <span class="dot"></span>
+      <span id="lens">&mdash;</span>
+    </div>
+
     <div class="status" id="status-chip" data-state="off">Disconnected</div>
-    <button id="connect" class="primary">Connect</button>
+    <button id="connect" class="btn primary">Connect</button>
   </header>
 
   <main>
     <section class="viewer" id="viewer">
       <img id="preview" alt="Live view from the camera" hidden>
+
       <div class="placeholder" id="placeholder">
-        <p>Not connected.</p>
+        <svg class="placeholder-mark" viewBox="0 0 48 48" aria-hidden="true">
+          <rect x="4" y="11" width="40" height="28" rx="6"/>
+          <circle cx="24" cy="25" r="8"/>
+        </svg>
+        <p class="placeholder-title">Not connected</p>
         <p class="hint">
           Running against the <strong>mock camera</strong> by default &mdash; no SDK
           or hardware needed. For a real body, set <code>camera.use_mock: false</code>
@@ -25,310 +44,405 @@
           Connect.
         </p>
       </div>
+
+      <!-- Floating over the image, because you read it while focusing. -->
+      <div class="hud" id="sharpness-block" hidden>
+        <div class="hud-head">Sharpness</div>
+        <div class="meter"><div class="meter-fill" id="sharpness-bar"></div></div>
+        <div class="hud-row"><span>Now</span><b id="sharpness-now">&mdash;</b></div>
+        <div class="hud-row"><span>Best</span><b id="sharpness-best">&mdash;</b></div>
+        <button id="sharpness-reset" class="hud-btn">Reset best</button>
+      </div>
+
       <div class="loupe-hint" id="loupe-hint" hidden>Click the image to move the loupe</div>
+
+      <!-- The controls you reach for with your eyes on the picture. -->
+      <div class="toolbar">
+        <div class="tb-group">
+          <label class="pill" title="Invert to positive — I">
+            <input type="checkbox" id="invert" checked>
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="8" cy="8" r="6"/>
+              <path d="M8 2a6 6 0 000 12z" fill="currentColor" stroke="none"/>
+            </svg>
+            <span>Invert</span>
+          </label>
+
+          <label class="pill" title="Magnified loupe — L">
+            <input type="checkbox" id="loupe">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.6"/>
+              <path d="M10.4 10.4L14 14"/>
+            </svg>
+            <span>Loupe</span>
+          </label>
+
+          <label class="pill" title="Highlight sharp edges — P">
+            <input type="checkbox" id="peaking">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M6 1.5l1.2 3.3L10.5 6 7.2 7.2 6 10.5 4.8 7.2 1.5 6l3.3-1.2z"/>
+              <path d="M11.6 8.8l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z"/>
+            </svg>
+            <span>Peaking</span>
+          </label>
+
+          <label class="pill" title="Measure sharpness continuously — S">
+            <input type="checkbox" id="sharpness-on">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M2 11a6 6 0 1112 0"/>
+              <path d="M8 11L11 6.5"/>
+            </svg>
+            <span>Sharpness</span>
+          </label>
+        </div>
+
+        <div class="tb-group focus-grid" id="focus-controls" hidden>
+          <button data-dir="near" data-size="coarse" title="Near, large step" aria-label="Focus near, large step">
+            <svg viewBox="0 0 20 16" aria-hidden="true"><path d="M8.5 3.5L5 8l3.5 4.5M13 3.5L9.5 8l3.5 4.5M18 3.5L14.5 8l3.5 4.5"/></svg>
+          </button>
+          <button data-dir="near" data-size="medium" title="Near, medium step" aria-label="Focus near, medium step">
+            <svg viewBox="0 0 20 16" aria-hidden="true"><path d="M11 3.5L7.5 8l3.5 4.5M15.5 3.5L12 8l3.5 4.5"/></svg>
+          </button>
+          <button data-dir="near" data-size="fine" title="Near, smallest step" aria-label="Focus near, smallest step">
+            <svg viewBox="0 0 20 16" aria-hidden="true"><path d="M13 3.5L9.5 8l3.5 4.5"/></svg>
+          </button>
+          <button data-dir="far" data-size="fine" title="Far, smallest step" aria-label="Focus far, smallest step">
+            <svg viewBox="0 0 20 16" aria-hidden="true"><path d="M7 3.5L10.5 8 7 12.5"/></svg>
+          </button>
+          <button data-dir="far" data-size="medium" title="Far, medium step" aria-label="Focus far, medium step">
+            <svg viewBox="0 0 20 16" aria-hidden="true"><path d="M4.5 3.5L8 8l-3.5 4.5M9 3.5L12.5 8 9 12.5"/></svg>
+          </button>
+          <button data-dir="far" data-size="coarse" title="Far, large step" aria-label="Focus far, large step">
+            <svg viewBox="0 0 20 16" aria-hidden="true"><path d="M2 3.5L5.5 8 2 12.5M6.5 3.5L10 8l-3.5 4.5M11 3.5L14.5 8 11 12.5"/></svg>
+          </button>
+        </div>
+
+        <div class="tb-group">
+          <button id="capture" class="btn primary capture" disabled>
+            Capture <kbd>Space</kbd>
+          </button>
+        </div>
+      </div>
     </section>
 
     <aside class="panel">
-      <div class="group">
-        <h2>Camera</h2>
-        <dl class="facts">
-          <dt>Body</dt><dd id="model">&mdash;</dd>
-          <dt>Lens</dt><dd id="lens">&mdash;</dd>
-        </dl>
-      </div>
-
-      <div class="group">
-        <h2>Preview</h2>
-        <label class="row">
-          <input type="checkbox" id="invert" checked>
-          <span>Invert to positive <kbd>I</kbd></span>
-        </label>
-
-        <label class="row stacked">
-          <span>Film type</span>
-          <div class="segmented" id="film-mode">
-            <button data-value="bw">B&amp;W</button>
-            <button data-value="color">Colour</button>
+      <details class="section" open>
+        <summary>
+          <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>
+          Image
+        </summary>
+        <div class="section-body">
+          <div class="field">
+            <span class="field-label">Film type</span>
+            <div class="segmented" id="film-mode">
+              <button data-value="bw">B&amp;W</button>
+              <button data-value="color">Colour</button>
+            </div>
           </div>
-        </label>
 
-        <label class="row stacked">
-          <span>Method</span>
-          <div class="segmented" id="inversion-mode">
-            <button data-value="film">Film</button>
-            <button data-value="linear">Linear</button>
+          <div class="field">
+            <span class="field-label">Method</span>
+            <div class="segmented" id="inversion-mode">
+              <button data-value="film">Film</button>
+              <button data-value="linear">Linear</button>
+            </div>
           </div>
-        </label>
-        <p class="note">
-          <strong>Film</strong> is the real pipeline: it measures the film base,
-          divides out the orange mask and inverts density properly.
-          <strong>Linear</strong> is the plain flip, kept so you can see the
-          difference &mdash; on colour negatives it comes out cyan.
-          Untick <em>Invert to positive</em> to see the negative itself.
-        </p>
 
-        <div id="film-controls">
-        <button id="sample-base">Sample film base from loupe area</button>
-        <p class="note" id="base-note">
-          Put the loupe over the <em>rebate</em> &mdash; the clear unexposed border
-          between frames &mdash; then press this. Measuring the real base beats the
-          automatic guess, which assumes the densest part of the picture is close
-          to base density. The <em>area</em> you pick carries over to the saved
-          positive, where the same rebate is re-measured at full resolution: a
-          capture and a live-view frame are on different scales, so the number
-          itself would mean nothing there.
-        </p>
+          <details class="about">
+            <summary>How the two methods differ</summary>
+            <p>
+              <strong>Film</strong> is the real pipeline: it measures the film base,
+              divides out the orange mask and inverts density properly.
+              <strong>Linear</strong> is the plain flip, kept so you can see the
+              difference &mdash; on colour negatives it comes out cyan.
+              Turn <em>Invert</em> off in the toolbar to see the negative itself.
+            </p>
+          </details>
 
-        <label class="row stacked">
-          <span>Exposure <output id="film-exposure-value">1.00&times;</output></span>
-          <input type="range" id="film-exposure" min="0.25" max="4" step="0.05" value="1">
-        </label>
-        <label class="row stacked">
-          <span>Contrast <output id="film-contrast-value">1.65</output></span>
-          <input type="range" id="film-contrast" min="0.6" max="3" step="0.05" value="1.65">
-        </label>
-        <button id="film-reset">Reset inversion settings</button>
-        </div>
-        <p class="note warn" id="film-disabled-note" hidden></p>
+          <div id="film-controls">
+            <button id="sample-base" class="btn wide">Sample film base from loupe area</button>
 
-        <p class="note">
-          These settings drive both the preview <em>and</em> the positive written
-          after a capture, so the file matches what you judged here. The capture
-          itself is always kept exactly as the camera wrote it.
-        </p>
-      </div>
+            <details class="about" id="base-note" data-measured="no">
+              <summary>Sampling the base</summary>
+              <p>
+                Put the loupe over the <em>rebate</em> &mdash; the clear unexposed border
+                between frames &mdash; then press this. Measuring the real base beats the
+                automatic guess, which assumes the densest part of the picture is close
+                to base density. The <em>area</em> you pick carries over to the saved
+                positive, where the same rebate is re-measured at full resolution: a
+                capture and a live-view frame are on different scales, so the number
+                itself would mean nothing there.
+              </p>
+            </details>
 
-      <div class="group">
-        <h2>Focus loupe</h2>
-        <label class="row">
-          <input type="checkbox" id="loupe">
-          <span>Magnified loupe <kbd>L</kbd></span>
-        </label>
-        <label class="row stacked">
-          <span>Zoom <output id="zoom-value">4.0&times;</output></span>
-          <input type="range" id="zoom" min="1" max="12" step="0.5" value="4">
-        </label>
-        <p class="note">
-          Click anywhere on the image to move the loupe. This enlarges pixels the
-          camera already discarded when it downscaled the live-view stream.
-        </p>
-        <p class="note" id="camera-zoom-note" hidden></p>
-      </div>
-
-      <div class="group">
-        <h2>Focus peaking</h2>
-        <label class="row">
-          <input type="checkbox" id="peaking">
-          <span>Highlight sharp edges <kbd>P</kbd></span>
-        </label>
-        <label class="row stacked">
-          <span>Sensitivity <output id="peaking-value">50%</output></span>
-          <input type="range" id="peaking-sensitivity" min="0" max="1" step="0.05" value="0.5">
-        </label>
-        <p class="note">
-          Sharp edges are marked red. Computed here rather than read from the
-          camera, so it works in autofocus mode &mdash; meaning you can drive
-          focus and watch peaking at the same time.
-        </p>
-      </div>
-
-      <div class="group">
-        <h2>Focus drive</h2>
-        <div id="focus-controls" hidden>
-          <div class="focus-grid">
-            <button data-dir="near" data-size="coarse" title="Near, large step">&laquo;&laquo;</button>
-            <button data-dir="near" data-size="medium" title="Near, medium step">&laquo;</button>
-            <button data-dir="near" data-size="fine" title="Near, small step">&lsaquo;</button>
-            <button data-dir="far" data-size="fine" title="Far, small step">&rsaquo;</button>
-            <button data-dir="far" data-size="medium" title="Far, medium step">&raquo;</button>
-            <button data-dir="far" data-size="coarse" title="Far, large step">&raquo;&raquo;</button>
+            <div class="field">
+              <span class="field-label">Exposure <output id="film-exposure-value">1.00&times;</output></span>
+              <input type="range" id="film-exposure" min="0.25" max="4" step="0.05" value="1">
+            </div>
+            <div class="field">
+              <span class="field-label">Contrast <output id="film-contrast-value">1.65</output></span>
+              <input type="range" id="film-contrast" min="0.6" max="3" step="0.05" value="1.65">
+            </div>
+            <button id="film-reset" class="btn wide">Reset inversion settings</button>
           </div>
-          <p class="note">
-            <kbd>&larr;</kbd><kbd>&rarr;</kbd> fine &middot;
-            <kbd>Shift</kbd> medium &middot; <kbd>Alt</kbd> coarse
-          </p>
-          <p class="note">
-            <strong>Fine</strong> is a single step of the SDK's smallest size
-            &mdash; the finest move EDSDK offers, so nothing below it exists.
-            Medium and coarse send several steps, because on an RF macro lens
-            one step is far too small to see without the loupe.
-          </p>
-        </div>
-        <div id="focus-unavailable" class="warn" hidden>
-          <p id="focus-reason"></p>
-        </div>
-      </div>
 
-      <div class="group">
-        <h2>Sharpness</h2>
-        <label class="row">
-          <input type="checkbox" id="sharpness-on">
-          <span>Measure continuously <kbd>S</kbd></span>
-        </label>
-        <div id="sharpness-block" hidden>
-          <div class="meter"><div class="meter-fill" id="sharpness-bar"></div></div>
+          <p class="note warn" id="film-disabled-note" hidden></p>
+
+          <details class="about">
+            <summary>What these settings reach</summary>
+            <p>
+              They drive both the preview <em>and</em> the positive written
+              after a capture, so the file matches what you judged here. The capture
+              itself is always kept exactly as the camera wrote it.
+            </p>
+          </details>
+        </div>
+      </details>
+
+      <details class="section" open>
+        <summary>
+          <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>
+          Focus
+        </summary>
+        <div class="section-body">
+          <div class="field">
+            <span class="field-label">Loupe zoom <output id="zoom-value">4.0&times;</output></span>
+            <input type="range" id="zoom" min="1" max="12" step="0.5" value="4">
+          </div>
+          <details class="about">
+            <summary>About the loupe</summary>
+            <p>
+              Click anywhere on the image to move the loupe. This enlarges pixels the
+              camera already discarded when it downscaled the live-view stream.
+            </p>
+          </details>
+          <p class="note" id="camera-zoom-note" hidden></p>
+
+          <div class="field">
+            <span class="field-label">Peaking sensitivity <output id="peaking-value">50%</output></span>
+            <input type="range" id="peaking-sensitivity" min="0" max="1" step="0.05" value="0.5">
+          </div>
+          <details class="about">
+            <summary>About peaking</summary>
+            <p>
+              Sharp edges are marked red. Computed here rather than read from the
+              camera, so it works in autofocus mode &mdash; meaning you can drive
+              focus and watch peaking at the same time.
+            </p>
+          </details>
+
+          <div class="keyline">
+            <span class="field-label">Focus drive</span>
+            <p class="note keys">
+              <kbd>&larr;</kbd><kbd>&rarr;</kbd> fine &middot;
+              <kbd>Shift</kbd> medium &middot; <kbd>Alt</kbd> coarse
+            </p>
+            <details class="about">
+              <summary>About the step sizes</summary>
+              <p>
+                <strong>Fine</strong> is a single step of the SDK's smallest size
+                &mdash; the finest move EDSDK offers, so nothing below it exists.
+                Medium and coarse send several steps, because on an RF macro lens
+                one step is far too small to see without the loupe.
+              </p>
+            </details>
+            <div id="focus-unavailable" class="note warn" hidden>
+              <span id="focus-reason"></span>
+            </div>
+          </div>
+
+          <details class="about">
+            <summary>About the sharpness readout</summary>
+            <p>
+              Relative only &mdash; turn focus and watch it peak. Measures the
+              loupe's region when the loupe is up, otherwise the middle of the
+              frame. Values are meaningful within one focusing session and
+              nowhere else.
+            </p>
+          </details>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary>
+          <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>
+          Roll
+        </summary>
+        <div class="section-body">
+          <div class="roll-line">
+            <div class="field grow">
+              <span class="field-label">Roll</span>
+              <input type="text" class="mono" id="roll-name" spellcheck="false" autocomplete="off">
+            </div>
+            <div class="field narrow">
+              <span class="field-label">Frame</span>
+              <input type="number" id="roll-frame" min="0" max="99999" step="1">
+            </div>
+          </div>
+          <p class="note" id="roll-example">&mdash;</p>
+          <button id="roll-next" class="btn wide">Start the next roll</button>
+          <details class="about">
+            <summary>What a new roll does</summary>
+            <p>
+              Increments the roll number and resets the frame to 1. The frame number
+              advances once per shutter release, so a body set to RAW+JPEG gives two
+              files that share one frame number.
+            </p>
+          </details>
+
+          <div class="field">
+            <span class="field-label">Film stock</span>
+            <input type="text" id="roll-stock" spellcheck="false" autocomplete="off"
+                   placeholder="Kodak Portra 400">
+          </div>
+          <div class="field">
+            <span class="field-label">Developer</span>
+            <input type="text" id="roll-developer" spellcheck="false" autocomplete="off"
+                   placeholder="C-41, Cinestill CS41">
+          </div>
+          <div class="field">
+            <span class="field-label">Date</span>
+            <input type="text" id="roll-date" spellcheck="false" autocomplete="off"
+                   placeholder="2026-08-04, or 'summer 2019'">
+          </div>
+          <div class="field">
+            <span class="field-label">Notes</span>
+            <input type="text" id="roll-notes" spellcheck="false" autocomplete="off">
+          </div>
+          <details class="about">
+            <summary>Where this is written</summary>
+            <p>
+              To <code>roll.json</code> beside the frames, and updated after
+              every capture &mdash; so filling one in halfway through the roll still
+              records it. What a negative is cannot be read back off the file six
+              months later unless it was written down at the time.
+            </p>
+          </details>
+
+          <div class="field">
+            <span class="field-label">Naming template</span>
+            <input type="text" class="mono" id="roll-template" spellcheck="false" autocomplete="off">
+          </div>
+          <details class="about">
+            <summary>Template fields</summary>
+            <p>
+              <code>{roll}</code> <code>{frame}</code> <code>{original}</code>
+              <code>{date}</code> <code>{time}</code> <code>{stock}</code>.
+              <code>{frame:02d}</code> pads the number, and a <code>/</code> makes a
+              folder. Leave it empty to keep the camera's own filenames.
+            </p>
+          </details>
+        </div>
+      </details>
+
+      <details class="section" open>
+        <summary>
+          <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>
+          Capture
+        </summary>
+        <div class="section-body">
           <dl class="facts">
-            <dt>Now</dt><dd id="sharpness-now">&mdash;</dd>
-            <dt>Best</dt><dd id="sharpness-best">&mdash;</dd>
+            <dt>Shutter</dt><dd id="shutter-mode">&mdash;</dd>
+            <dt>Saving to</dt><dd id="resolved-dir" class="path">&mdash;</dd>
           </dl>
-          <p class="note">
-            Relative only &mdash; turn focus and watch it peak. Measures the
-            loupe's region when the loupe is up, otherwise the middle of the
-            frame. Values are meaningful within one focusing session and
-            nowhere else.
-          </p>
-          <button id="sharpness-reset">Reset best</button>
-        </div>
-      </div>
+          <div id="capture-status" class="capture-status" hidden></div>
 
-      <div class="group">
-        <h2>Roll</h2>
-        <div class="roll-line">
-          <label class="row stacked grow">
-            <span>Roll</span>
-            <input type="text" id="roll-name" spellcheck="false" autocomplete="off">
+          <div class="field">
+            <span class="field-label">Save to</span>
+            <input type="text" class="mono" id="output-dir" spellcheck="false" autocomplete="off">
+          </div>
+          <details class="about">
+            <summary>About the save location</summary>
+            <p>
+              Press <kbd>Enter</kbd> or click away to apply. A relative path resolves
+              against the project folder, and the folder is created if it does not
+              exist. Changes last for this session &mdash; to make one permanent, set
+              <code>capture.output_dir</code> in <code>config.yaml</code>.
+            </p>
+          </details>
+
+          <div class="field">
+            <span class="field-label">Settle delay <output id="settle-value">&mdash;</output></span>
+            <input type="range" id="settle" min="0" max="10" step="0.1" value="1.5">
+          </div>
+          <details class="about">
+            <summary>Why wait before firing</summary>
+            <p>
+              Waited after the last thing that could have disturbed the rig, before
+              the shutter fires. On a copy stand, residual vibration is the main
+              cause of soft scans.
+            </p>
+          </details>
+
+          <label class="switch">
+            <span>Develop a positive beside each capture</span>
+            <input type="checkbox" id="develop-positives" checked>
           </label>
-          <label class="row stacked narrow">
-            <span>Frame</span>
-            <input type="number" id="roll-frame" min="0" max="99999" step="1">
-          </label>
-        </div>
-        <p class="note" id="roll-example">&mdash;</p>
-        <button id="roll-next">Start the next roll</button>
-        <p class="note">
-          Increments the roll number and resets the frame to 1. The frame number
-          advances once per shutter release, so a body set to RAW+JPEG gives two
-          files that share one frame number.
-        </p>
+          <details class="about">
+            <summary>About developed positives</summary>
+            <p>
+              Uses the inversion settings above, so the file matches what you judged
+              on screen. The original is never modified or overwritten.
+            </p>
+          </details>
 
-        <label class="row stacked">
-          <span>Film stock</span>
-          <input type="text" id="roll-stock" spellcheck="false" autocomplete="off"
-                 placeholder="Kodak Portra 400">
-        </label>
-        <label class="row stacked">
-          <span>Developer</span>
-          <input type="text" id="roll-developer" spellcheck="false" autocomplete="off"
-                 placeholder="C-41, Cinestill CS41">
-        </label>
-        <label class="row stacked">
-          <span>Date</span>
-          <input type="text" id="roll-date" spellcheck="false" autocomplete="off"
-                 placeholder="2026-08-04, or 'summer 2019'">
-        </label>
-        <label class="row stacked">
-          <span>Notes</span>
-          <input type="text" id="roll-notes" spellcheck="false" autocomplete="off">
-        </label>
-        <p class="note">
-          Written to <code>roll.json</code> beside the frames, and updated after
-          every capture &mdash; so filling one in halfway through the roll still
-          records it. What a negative is cannot be read back off the file six
-          months later unless it was written down at the time.
-        </p>
-
-        <label class="row stacked">
-          <span>Naming template</span>
-          <input type="text" id="roll-template" spellcheck="false" autocomplete="off">
-        </label>
-        <p class="note">
-          Fields: <code>{roll}</code> <code>{frame}</code> <code>{original}</code>
-          <code>{date}</code> <code>{time}</code> <code>{stock}</code>.
-          <code>{frame:02d}</code> pads the number, and a <code>/</code> makes a
-          folder. Leave it empty to keep the camera's own filenames.
-        </p>
-      </div>
-
-      <div class="group">
-        <h2>Capture</h2>
-        <button id="capture" class="primary big" disabled>
-          Capture <kbd>Space</kbd>
-        </button>
-        <dl class="facts">
-          <dt>Shutter</dt><dd id="shutter-mode">&mdash;</dd>
-          <dt>Saving to</dt><dd id="resolved-dir" class="path">&mdash;</dd>
-        </dl>
-        <div id="capture-status" class="capture-status" hidden></div>
-
-        <label class="row stacked">
-          <span>Save to</span>
-          <input type="text" id="output-dir" spellcheck="false" autocomplete="off">
-        </label>
-        <p class="note">
-          Press <kbd>Enter</kbd> or click away to apply. A relative path resolves
-          against the project folder, and the folder is created if it does not
-          exist. Changes last for this session &mdash; to make one permanent, set
-          <code>capture.output_dir</code> in <code>config.yaml</code>.
-        </p>
-
-        <label class="row stacked">
-          <span>Settle delay <output id="settle-value">&mdash;</output></span>
-          <input type="range" id="settle" min="0" max="10" step="0.1" value="1.5">
-        </label>
-        <p class="note">
-          Waited after the last thing that could have disturbed the rig, before
-          the shutter fires. On a copy stand, residual vibration is the main
-          cause of soft scans.
-        </p>
-
-        <label class="row">
-          <input type="checkbox" id="develop-positives" checked>
-          <span>Develop a positive beside each capture</span>
-        </label>
-        <p class="note">
-          Uses the inversion settings above, so the file matches what you judged
-          on screen. The original is never modified or overwritten.
-        </p>
-
-        <div id="positive-options">
-          <label class="row stacked">
-            <span>Positive format</span>
-            <div class="segmented" id="positive-format">
-              <button data-value="auto">Auto</button>
-              <button data-value="tiff">TIFF</button>
-              <button data-value="jpeg">JPEG</button>
+          <div id="positive-options">
+            <div class="field">
+              <span class="field-label">Positive format</span>
+              <div class="segmented" id="positive-format">
+                <button data-value="auto">Auto</button>
+                <button data-value="tiff">TIFF</button>
+                <button data-value="jpeg">JPEG</button>
+              </div>
             </div>
-          </label>
-          <p class="note">
-            <strong>Auto</strong> keeps the depth the capture had: a 16-bit TIFF
-            from RAW and from HEIF, a JPEG from a JPEG. Forcing JPEG on a RAW
-            throws away 8 bits, which is a fine proof and a poor master.
-          </p>
+            <details class="about">
+              <summary>What Auto picks</summary>
+              <p>
+                <strong>Auto</strong> keeps the depth the capture had: a 16-bit TIFF
+                from RAW and from HEIF, a JPEG from a JPEG. Forcing JPEG on a RAW
+                throws away 8 bits, which is a fine proof and a poor master.
+              </p>
+            </details>
 
-          <label class="row stacked">
-            <span>TIFF compression</span>
-            <div class="segmented" id="tiff-compression">
-              <button data-value="none">None</button>
-              <button data-value="lzw">LZW</button>
-              <button data-value="deflate">Deflate</button>
+            <div class="field">
+              <span class="field-label">TIFF compression</span>
+              <div class="segmented" id="tiff-compression">
+                <button data-value="none">None</button>
+                <button data-value="lzw">LZW</button>
+                <button data-value="deflate">Deflate</button>
+              </div>
             </div>
-          </label>
-          <p class="note">
-            All lossless. Measured on real 32 MP positives: none 194 MB in
-            0.2 s, LZW 162&ndash;178 MB in 2.3 s, <strong>deflate 74&ndash;81 MB
-            in ~5 s</strong>. LZW hardly compresses 16-bit continuous tone and
-            is what you get anyway if nothing is set, so deflate is the default.
-          </p>
+            <details class="about">
+              <summary>Why Deflate is the default</summary>
+              <p>
+                All lossless. Measured on real 32 MP positives: none 194 MB in
+                0.2 s, LZW 162&ndash;178 MB in 2.3 s, <strong>deflate 74&ndash;81 MB
+                in ~5 s</strong>. LZW hardly compresses 16-bit continuous tone and
+                is what you get anyway if nothing is set, so deflate is the default.
+              </p>
+            </details>
 
-          <label class="row stacked">
-            <span>JPEG quality <output id="jpeg-quality-value">95</output></span>
-            <input type="range" id="jpeg-quality" min="50" max="100" step="1" value="95">
-          </label>
+            <div class="field">
+              <span class="field-label">JPEG quality <output id="jpeg-quality-value">95</output></span>
+              <input type="range" id="jpeg-quality" min="50" max="100" step="1" value="95">
+            </div>
+          </div>
         </div>
-      </div>
+      </details>
 
-      <div class="group">
-        <h2>Downloaded</h2>
-        <ul class="captures" id="captures"><li class="empty">Nothing yet.</li></ul>
-      </div>
+      <details class="section" open>
+        <summary>
+          <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>
+          Downloaded
+        </summary>
+        <div class="section-body">
+          <ul class="captures" id="captures"><li class="empty">Nothing yet.</li></ul>
+        </div>
+      </details>
 
-      <div class="group">
-        <h2>Not in this version</h2>
-        <p class="note">
-          Corner-by-corner alignment checking is not built yet, and captures are
-          still named by the camera &mdash; no roll or frame numbering.
-        </p>
-      </div>
+      <p class="panel-foot">
+        Corner-by-corner alignment checking is not built yet.
+      </p>
     </aside>
   </main>
 
