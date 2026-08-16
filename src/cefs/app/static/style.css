@@ -758,7 +758,9 @@ input[type="range"]::-moz-range-thumb {
   gap: 5px;
   font-size: 11.5px;
   color: var(--text-3);
-  cursor: default;
+  /* Pointer, unlike the section headers: these are the one thing a reader has
+     to discover for the panel to give up everything it knows. */
+  cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
   list-style: none;

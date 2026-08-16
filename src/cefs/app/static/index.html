@@ -408,17 +408,16 @@
               <span class="field-label">TIFF compression</span>
               <div class="segmented" id="tiff-compression">
                 <button data-value="none">None</button>
-                <button data-value="lzw">LZW</button>
                 <button data-value="deflate">Deflate</button>
               </div>
             </div>
             <details class="about">
               <summary>Why Deflate is the default</summary>
               <p>
-                All lossless. Measured on real 32 MP positives: none 194 MB in
-                0.2 s, LZW 162&ndash;178 MB in 2.3 s, <strong>deflate 74&ndash;81 MB
-                in ~5 s</strong>. LZW hardly compresses 16-bit continuous tone and
-                is what you get anyway if nothing is set, so deflate is the default.
+                Both lossless. Measured on real 32 MP positives: none 194 MB in
+                0.2 s, <strong>deflate 74&ndash;81 MB in ~5 s</strong>. LZW sat
+                between the two and went with OpenCV: it hardly compresses 16-bit
+                continuous tone, so it was never worth the seconds it cost.
               </p>
             </details>
 
