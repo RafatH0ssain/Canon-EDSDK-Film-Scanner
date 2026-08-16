@@ -154,3 +154,100 @@ def test_off_macos_the_helper_is_a_passthrough():
     assert run_with_sdk_loop(lambda: marker) is marker
     if not REQUIRES_MAIN_THREAD:
         assert not EXECUTOR.running, "no loop should be left running off macOS"
+
+
+# --- a failed connect must not strand the SDK --------------------------------
+
+
+class _FakeDll:
+    """Enough of EDSDK to walk ``_on_thread_setup``, refusing the session.
+
+    ``EdsInitializeSDK`` refuses a second call the way the real SDK does, so a
+    test that forgets to terminate fails on the *symptom* the user reported
+    rather than on a bookkeeping assertion.
+    """
+
+    INTERNAL_ERROR = 0x02
+    COMM_PORT_IS_IN_USE = 0xC0
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.live = False
+
+    def EdsInitializeSDK(self) -> int:
+        self.calls.append("init")
+        if self.live:
+            return self.INTERNAL_ERROR
+        self.live = True
+        return 0
+
+    def EdsTerminateSDK(self) -> int:
+        self.calls.append("terminate")
+        self.live = False
+        return 0
+
+    def EdsGetCameraList(self, out) -> int:
+        return 0
+
+    def EdsGetChildCount(self, _list, out) -> int:
+        out._obj.value = 1
+        return 0
+
+    def EdsGetChildAtIndex(self, _list, _index, out) -> int:
+        return 0
+
+    def EdsOpenSession(self, _camera) -> int:
+        self.calls.append("open")
+        return self.COMM_PORT_IS_IN_USE
+
+    def EdsCloseSession(self, _camera) -> int:
+        return 0
+
+    def EdsRelease(self, _handle) -> int:
+        return 0
+
+
+def test_a_refused_session_releases_the_sdk_for_the_next_attempt(monkeypatch):
+    """A failed connect must call EdsTerminateSDK before it gives up.
+
+    EdsInitializeSDK succeeds long before EdsOpenSession is tried. On the
+    main-thread path, ``start()`` used to let the setup exception escape before
+    ``_started = True``, and ``stop()`` returns early while ``_started`` is
+    False -- so nothing ever terminated the SDK. Every later connect then died
+    on EdsInitializeSDK returning INTERNAL_ERROR, for the life of the process:
+    one transient COMM_PORT_IS_IN_USE meant restarting the app.
+
+    Found on an EOS R7, 2026-08-16, while sweeping the UI redesign for
+    regressions.
+    """
+    from cefs.edsdk import bindings as bindings_mod
+    from cefs.edsdk import camera as camera_mod
+    from cefs.edsdk.camera import EdsdkCamera
+
+    dll = _FakeDll()
+    monkeypatch.setattr(camera_mod, "REQUIRES_MAIN_THREAD", True)
+    monkeypatch.setattr(bindings_mod, "load_edsdk", lambda *a, **k: dll)
+
+    executor = camera_mod.EXECUTOR
+    thread = _run_loop(executor)
+    try:
+        cam = EdsdkCamera(library_dir="unused")
+
+        with pytest.raises(Exception):
+            cam.start()
+        assert "terminate" in dll.calls, (
+            "a failed connect left the SDK initialised; the next one cannot recover"
+        )
+        assert not dll.live
+
+        # The point of terminating: a retry gets a clean SDK rather than
+        # INTERNAL_ERROR. It still fails, but on the real cause.
+        with pytest.raises(Exception) as second:
+            cam.start()
+        assert "EdsInitializeSDK" not in str(second.value), (
+            f"retry died on a stranded SDK rather than the real fault: {second.value}"
+        )
+        assert dll.calls.count("open") == 2, "the retry must reach EdsOpenSession again"
+    finally:
+        executor.stop()
+        thread.join(timeout=5.0)

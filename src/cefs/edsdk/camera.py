@@ -278,7 +278,23 @@ class EdsdkCamera:
                 "  'python -m cefs.app.server', which reserves the main thread."
             )
         self._stopping.clear()
-        EXECUTOR.submit(self._on_thread_setup, "connect", timeout=60.0)
+        try:
+            EXECUTOR.submit(self._on_thread_setup, "connect", timeout=60.0)
+        except BaseException:
+            # Setup can fail after EdsInitializeSDK has already succeeded -- a
+            # refused EdsOpenSession is the usual way. Leaving the SDK
+            # initialised is not recoverable from inside the process: the next
+            # EdsInitializeSDK sees it is already up and returns INTERNAL_ERROR,
+            # so one transient failure would block connecting until a restart.
+            # ``stop()`` cannot clean it up either, because ``_started`` is
+            # still False and it returns early on that. The threaded path gets
+            # this guarantee from ``_run``'s except clause; this is the same
+            # guarantee for the main-thread path.
+            try:
+                EXECUTOR.submit(self._on_thread_teardown, "connect-cleanup", timeout=30.0)
+            except Exception:
+                logger.exception("Releasing the SDK after a failed connect also failed")
+            raise
         self._started = True
         # Only now: a tick that ran before setup would touch a null dll.
         EXECUTOR.set_tick(self._tick)
