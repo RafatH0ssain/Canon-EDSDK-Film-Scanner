@@ -934,7 +934,8 @@ input[type="range"]::-moz-range-thumb {
 
 .toast {
   position: fixed;
-  bottom: 20px;
+  /* Clear of the toolbar, which owns the bottom centre of the picture. */
+  bottom: 80px;
   left: 20px;
   background: var(--glass);
   backdrop-filter: blur(30px) saturate(180%);
