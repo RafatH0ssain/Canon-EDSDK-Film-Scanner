@@ -6,6 +6,7 @@ is where the deadlocks live.
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 
@@ -225,6 +226,11 @@ def test_a_refused_session_releases_the_sdk_for_the_next_attempt(monkeypatch):
     from cefs.edsdk.camera import EdsdkCamera
 
     dll = _FakeDll()
+    # This is a claim about the macOS path, so say so rather than inheriting
+    # whatever the runner happens to be. ``start()`` refuses outright anywhere
+    # that is not Windows or macOS, and on Linux CI that guard fired before the
+    # SDK was ever touched -- leaving the test asserting nothing at all.
+    monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(camera_mod, "REQUIRES_MAIN_THREAD", True)
     monkeypatch.setattr(bindings_mod, "load_edsdk", lambda *a, **k: dll)
 
@@ -233,10 +239,18 @@ def test_a_refused_session_releases_the_sdk_for_the_next_attempt(monkeypatch):
     try:
         cam = EdsdkCamera(library_dir="unused")
 
-        with pytest.raises(Exception):
+        with pytest.raises(Exception) as first:
             cam.start()
-        assert "terminate" in dll.calls, (
-            "a failed connect left the SDK initialised; the next one cannot recover"
+        # Fail loudly if the connect died before reaching the SDK: without this
+        # any new early guard in start() would make everything below vacuous,
+        # which is how the Linux failure hid.
+        assert "EdsOpenSession" in str(first.value), (
+            f"start() failed before it reached the SDK, so this test proves "
+            f"nothing: {first.value}"
+        )
+        assert dll.calls == ["init", "open", "terminate"], (
+            f"a failed connect must initialise, try the session, then release "
+            f"the SDK -- got {dll.calls}"
         )
         assert not dll.live
 
