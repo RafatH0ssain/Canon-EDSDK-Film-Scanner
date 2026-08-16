@@ -6,4 +6,4 @@
 - ``cefs.app``        the local web server that wires them together.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.1.0"

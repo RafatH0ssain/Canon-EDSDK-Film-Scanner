@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "canon-edsdk-film-scanner"
-version = "0.1.0"
+version = "1.1.0"
 description = "Wired, low-latency remote-control film scanning for Canon cameras over EDSDK/USB, with live positive preview."
 readme = "README.md"
 # Upper bound is native wheel availability (rawpy, pillow-heif), not a language
