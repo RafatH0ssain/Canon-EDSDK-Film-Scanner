@@ -13,10 +13,14 @@ uploaded.
 
 from __future__ import annotations
 
+import platform
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+from cefs import __version__  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 SPEC = REPO / "packaging" / "cefs.spec"
@@ -120,6 +124,33 @@ def audit_output(root: Path) -> list[Path]:
     return offenders
 
 
+def archive(built: Path, version: str) -> Path:
+    """Zip the build under a name that carries the version and the platform.
+
+    Named from ``__version__`` rather than typed in by hand. The two drifted
+    once already -- a release tagged v1.0.0 built from a tree that said 0.1.0 --
+    because nothing connected them.
+
+    ``ditto`` on macOS, not ``shutil.make_archive``: an .app is full of
+    symlinks, and a zip that resolves them into copies is both much larger and
+    no longer a valid bundle.
+    """
+    system = {"darwin": "macOS", "win32": "Windows"}.get(sys.platform, sys.platform)
+    arch = platform.machine()
+    out = DIST / f"{APP_NAME.replace(' ', '-')}-{version}-{system}-{arch}.zip"
+    out.unlink(missing_ok=True)
+
+    if sys.platform == "darwin":
+        subprocess.run(
+            ["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(built), str(out)],
+            check=True,
+        )
+    else:
+        made = shutil.make_archive(str(out.with_suffix("")), "zip", built.parent, built.name)
+        out = Path(made)
+    return out
+
+
 def main() -> int:
     check_toolchain()
 
@@ -181,6 +212,8 @@ def main() -> int:
     )
     print(f"\nBuilt {built}  ({size_mb:.0f} MB)")
     print("No Canon SDK files in the output.")
+    archive_path = archive(built, __version__)
+    print(f"Packaged {archive_path.name}  ({archive_path.stat().st_size / 1e6:.0f} MB)")
     if sys.platform == "darwin":
         print(
             "\nUnsigned, so Gatekeeper will block it on another Mac. To share it:\n"
