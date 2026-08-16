@@ -279,6 +279,10 @@ code {
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid var(--hairline);
   box-shadow: var(--shadow-float);
+  /* Never run under the toolbar or off the bottom of a short window. */
+  max-height: calc(100% - 96px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .hud[hidden] { transform: translateY(-6px) scale(0.97); }
 
