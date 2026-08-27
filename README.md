@@ -6,6 +6,14 @@ Scan film negatives with a Canon camera on a copy stand — live positive previe
 
 Colour and black-and-white. Verified on an EOS R7 from Windows and macOS.
 
+## Preview
+
+**Live Inversion & Focus Peaking**  
+![Inverted B&W film with focus peaking and right nav open](LiveInversionFocusPeaking.png)
+
+**Raw Negative View**  
+![Raw negative view without processing](RawNegativeView.png)
+
 ## Why not the wireless one
 
 The sibling project, **Canon Smart Film Scan**, does the same job over [CCAPI](https://developercommunity.usa.canon.com/) with no native dependencies and a plain `pip install`. If wireless live view is fast enough on your rig, use that instead.
