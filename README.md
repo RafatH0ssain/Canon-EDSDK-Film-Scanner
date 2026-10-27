@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/RafatH0ssain/Canon-EDSDK-Film-Scanner/actions/workflows/tests.yml/badge.svg)](https://github.com/RafatH0ssain/Canon-EDSDK-Film-Scanner/actions/workflows/tests.yml)
 
-Scan film negatives with a Canon camera on a copy stand — live positive preview, remote focus and shutter, over USB.
+Scan film negatives with a Canon camera on a copy stand: live positive preview, remote focus and shutter, over USB.
 
 Colour and black-and-white. Verified on an EOS R7 from Windows and macOS.
 
@@ -14,9 +14,13 @@ Colour and black-and-white. Verified on an EOS R7 from Windows and macOS.
 **Raw Negative View**  
 ![Raw negative view without processing](RawNegativeView.png)
 
+## In use
+
+Photos of the copy-stand rig (camera, macro lens, backlight) and a short screen recording of the live preview belong here.
+
 ## Why not the wireless one
 
-The sibling project, **Canon Smart Film Scan**, does the same job over [CCAPI](https://developercommunity.usa.canon.com/) with no native dependencies and a plain `pip install`. If wireless live view is fast enough on your rig, use that instead.
+The sibling project, **Canon Smart Film Scanner**, does the same job over [CCAPI](https://developercommunity.usa.canon.com/) with no native dependencies and a plain `pip install`. If wireless live view is fast enough on your rig, use that instead.
 
 It wasn't here. At 960×640:
 
@@ -25,7 +29,7 @@ It wasn't here. At 960×640:
 | Wi-Fi (CCAPI) | 3.98 | 251 ms | 1.23 MB/s |
 | **USB (EDSDK)** | **59.79** | **17 ms** | **15.33 MB/s** |
 
-The R7 is Wi-Fi 4 on 2.4 GHz with no Ethernet, and CCAPI has no USB transport — so the only fix was changing SDK. Details in [spike/README.md](spike/README.md).
+The R7 is Wi-Fi 4 on 2.4 GHz with no Ethernet, and CCAPI has no USB transport, so the only fix was changing SDK. Details in [spike/README.md](spike/README.md).
 
 What it costs: USB cable only, and you obtain EDSDK from Canon yourself.
 
@@ -35,30 +39,30 @@ EDSDK never modifies firmware, so it can't change what the camera's screen shows
 
 ⚠️ **Canon licenses EDSDK per developer and it may not be redistributed.** This repo calls the SDK; it will never contain it.
 
-Register with [Canon's Developer Community](https://developercommunity.usa.canon.com/), check your body is on the supported list, and download the SDK **for your platform** — Windows and macOS are separate downloads. Keep it outside the repo, or in `edsdk_sdk/`, which is git-ignored.
+Register with [Canon's Developer Community](https://developercommunity.usa.canon.com/), check your body is on the supported list, and download the SDK **for your platform**. Windows and macOS are separate downloads. Keep it outside the repo, or in `edsdk_sdk/`, which is git-ignored.
 
 Never commit headers, binaries, or Canon's reference text.
 
-> The RAW-develop bundle adds nothing on macOS: its `DPP.framework` is **i386**, which macOS hasn't run since Catalina. RAW goes through LibRaw either way — better here regardless, since the inversion wants linear sensor data rather than Canon's rendering.
+> The RAW-develop bundle adds nothing on macOS: its `DPP.framework` is **i386**, which macOS hasn't run since Catalina. RAW goes through LibRaw either way. That is better here regardless: the inversion wants linear sensor data rather than Canon's rendering.
 
 ## Hardware
 
 - A Canon body EDSDK supports. The **EOS R7** is the reference.
-- A real data cable, straight into the machine. USB 2.0 is enough for live view — measured, 8.3 MB/s used of 31 available — it only caps download speed.
+- A real data cable, straight into the machine. USB 2.0 is enough for live view, measured at 8.3 MB/s used of 31 available; it only caps download speed.
 - A macro lens near 1:1, copy stand, negative holder, backlight (high-CRI for colour).
 
 An autofocus lens can be driven from the PC; with a manual lens you focus by hand and keep everything else. Detected automatically.
 
 ## The app
 
-A packaged build runs by double-clicking — no Python, no checkout. On first
+A packaged build runs by double-clicking: no Python, no checkout. On first
 launch it creates **Documents/Canon EDSDK Film Scanner/**, puts a commented
 `config.yaml` there, opens the UI in your browser, and starts on the mock
 camera so there is something to look at straight away.
 
 **It does not include Canon's SDK, and can't.** EDSDK is licensed per developer
 and may not be redistributed, so driving a real camera still means getting your
-own copy and pointing that `config.yaml` at it — see [Getting EDSDK](#getting-edsdk).
+own copy and pointing that `config.yaml` at it (see [Getting EDSDK](#getting-edsdk)).
 Without it you get the full UI against the synthetic negative, which is enough
 to judge the inversion, loupe and peaking.
 
@@ -71,12 +75,12 @@ python packaging/build_app.py
 
 Output lands in `dist/`, around **66 MB**. The build **fails rather than
 finishes** if any of Canon's files reach the output, or if it bundles a native
-library missing from [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) — the two
+library missing from [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md): the two
 mistakes here that can't be undone once uploaded.
 
 **The source here is MIT; a built binary is GPL v2.** It bundles pillow-heif's
-wheel, which upstream licenses as GPLv2 because `libheif` hard-links **libx265**
-— present even though this app only ever decodes HEIF. MIT is GPL-compatible,
+wheel, which upstream licenses as GPLv2 because `libheif` hard-links **libx265**,
+present even though this app only ever decodes HEIF. MIT is GPL-compatible,
 so the code stays MIT from source; only the combined binary is GPL. Handing one
 out means shipping the notices and offering the components' source, both of
 which are set up in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and
@@ -91,7 +95,7 @@ one properly needs an Apple Developer ID and notarisation; locally, right-click
 
 ## Running from source
 
-No SDK, no camera — the default in a fresh clone:
+No SDK, no camera. The default in a fresh clone:
 
 ```bash
 python -m venv .venv                              # 3.10-3.13, 64-bit
@@ -99,17 +103,17 @@ python -m venv .venv                              # 3.10-3.13, 64-bit
 .venv/bin/python -m cefs.app.server
 ```
 
-<http://127.0.0.1:8000/>, press Connect, and you get a synthetic negative with grain, mask and rebate. Loopback only — don't expose it, it can fire your shutter.
+<http://127.0.0.1:8000/>, press Connect, and you get a synthetic negative with grain, mask and rebate. Loopback only. Don't expose it; it can fire your shutter.
 
 <kbd>Space</kbd> capture · <kbd>←</kbd><kbd>→</kbd> focus (<kbd>Shift</kbd> medium, <kbd>Alt</kbd> coarse) · <kbd>I</kbd> invert · <kbd>L</kbd> loupe · <kbd>P</kbd> peaking · <kbd>S</kbd> sharpness
 
 ### With a real camera
 
-**Turn the camera's Wi-Fi and Bluetooth off first.** A Canon body disables USB data while wireless is on, and the only symptom is `cameras detected: 0` — it still appears on the USB bus, so nothing points at the cause. On macOS also quit Image Capture and Photos, which claim the camera on plug-in.
+**Turn the camera's Wi-Fi and Bluetooth off first.** A Canon body disables USB data while wireless is on, and the only symptom is `cameras detected: 0`. It still appears on the USB bus, so nothing points at the cause. On macOS also quit Image Capture and Photos, which claim the camera on plug-in.
 
 Copy `config.example.yaml` to `config.yaml`, set `camera.use_mock: false`, and point `edsdk.library_dir` at the folder holding `EDSDK.dll` or `EDSDK.framework`.
 
-macOS needs the framework re-signed before it will load — Canon ships it with the seal already broken, and the refusal (`library load disallowed by system policy`) never mentions signing:
+macOS needs the framework re-signed before it will load. Canon ships it with the seal already broken, and the refusal (`library load disallowed by system policy`) never mentions signing:
 
 ```bash
 ditto "/Volumes/Macintosh 1/EDSDK/Framework/EDSDK.framework" edsdk_sdk/Framework/EDSDK.framework
@@ -119,7 +123,7 @@ codesign --force --deep --sign - edsdk_sdk/Framework/EDSDK.framework
 codesign --verify --verbose edsdk_sdk/Framework/EDSDK.framework   # must say "valid on disk"
 ```
 
-The macOS 13.20.10 build is universal, so Apple Silicon needs no Rosetta. Check with `lipo -archs` if a load fails — that error doesn't mention architecture either.
+The macOS 13.20.10 build is universal, so Apple Silicon needs no Rosetta. Check with `lipo -archs` if a load fails; that error doesn't mention architecture either.
 
 Then:
 
@@ -148,7 +152,7 @@ Not available over EDSDK: camera-side live-view zoom (the software loupe is the 
 
 | Format | Decoder | Positive |
 |---|---|---|
-| RAW `.CR3`/`.CR2`, incl. CRAW | LibRaw — EDSDK cannot decode CR3, measured | 16-bit TIFF |
+| RAW `.CR3`/`.CR2`, incl. CRAW | LibRaw (EDSDK cannot decode CR3, measured) | 16-bit TIFF |
 | HEIF `.HIF` | pillow-heif, 10-bit, PQ transfer read from the file | 16-bit TIFF |
 | JPEG | Pillow | JPEG |
 
@@ -156,7 +160,7 @@ Chosen by the file, not a setting. TIFF is written by `tifffile`, because
 Pillow has no 16-bit-per-channel colour mode and raises on the array outright.
 
 Compression is **none** or **deflate**; deflate is the default at 2.4–2.6×
-lossless on real 32 MP positives. LZW was removed with OpenCV — it needs the
+lossless on real 32 MP positives. LZW was removed with OpenCV: it needs the
 `imagecodecs` package for a compression measured at 1.1–1.2× on 16-bit
 continuous tone. A config still asking for it is refused rather than quietly
 given deflate.
@@ -173,16 +177,16 @@ captures/Roll014/Roll014_Frame07.CR3
 
 Fields are `{roll}` `{frame}` `{original}` `{date}` `{time}` `{stock}`; `{frame:02d}` pads and `/` makes a folder. Leave the template empty to keep the camera's own names.
 
-**A frame is one shutter release, not one file** — RAW+HEIF sends two files sharing one frame number. `roll.json` records stock, developer, date and notes, rewritten after every capture.
+**A frame is one shutter release, not one file**: RAW+HEIF sends two files sharing one frame number. `roll.json` records stock, developer, date and notes, rewritten after every capture.
 
 ## Threading
 
 One thread owns the SDK; everything else queues a command and waits. *Which* thread differs:
 
-- **Windows** — any single-threaded-apartment thread running a message pump. Events arrive through COM.
-- **macOS** — the **main thread**. `EdsGetCameraList` returns OK and *zero cameras* from anywhere else, and a worker hangs in `EdsTerminateSDK`. Not a run-loop problem. So the web server runs on a worker instead; see `edsdk/mainthread.py`. Events come from polling `EdsGetEvent`.
+- **Windows**: any single-threaded-apartment thread running a message pump. Events arrive through COM.
+- **macOS**: the **main thread**. `EdsGetCameraList` returns OK and *zero cameras* from anywhere else, and a worker hangs in `EdsTerminateSDK`. Not a run-loop problem. So the web server runs on a worker instead; see `edsdk/mainthread.py`. Events come from polling `EdsGetEvent`.
 
-Live view is polled, so it keeps working when event dispatch is broken — the first thing that fails is a capture that never completes. Don't read a working preview as proof the threading is right.
+Live view is polled, so it keeps working when event dispatch is broken. The first thing that fails is a capture that never completes. Don't read a working preview as proof the threading is right.
 
 ## Limitations
 
