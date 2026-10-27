@@ -1,4 +1,4 @@
-# v0.0 — running the live-view spike
+# v0.0: running the live-view spike
 
 This is the measurement that decides whether the project continues. It answers one
 question: **is EDSDK live view over USB fast enough to be worth the complexity?**
@@ -7,7 +7,7 @@ Everything here is throwaway. Nothing should be built on top of it.
 
 ---
 
-## Recorded result — PASS
+## Recorded result: PASS
 
 **Canon EOS R7, USB-C, 2026-08-03. 20-second run.**
 
@@ -26,7 +26,7 @@ Everything here is throwaway. Nothing should be built on top of it.
 **15.0× the 960×640 Wi-Fi baseline at identical resolution.** The gate is passed
 decisively; v0.1 proceeds.
 
-Two conclusions from the shape of these numbers, not just their size:
+Two conclusions from the shape of these numbers rather than their size:
 
 - **The camera is the limit, not the cable.** Two windows sit at exactly 60.00 fps
   and 272 polls found no frame ready, so the loop was outrunning the body's live-view
@@ -36,19 +36,19 @@ Two conclusions from the shape of these numbers, not just their size:
   and the sibling project measured host-side processing at 14.3 ms. Over Wi-Fi that
   headroom was irrelevant; over USB it is the thing to watch in v0.1.
 
-### Focus stepping — works, with a caveat that matters for v0.2
+### Focus stepping works, with a caveat that matters for v0.2
 
 `DriveLensEvf` drives the lens correctly on an R7 with an `RF85mm F2 MACRO IS STM`.
 Verified by image, not by return code:
 
 | | sharpness | diff vs start |
 |---|---|---|
-| start | 157 | — (noise floor 2.51) |
+| start | 157 | n/a (noise floor 2.51) |
 | after 15 × `near3` | **3320** | 21.77 |
 | after 15 × `far3` | 156 | back to start |
 
 **The caveat: a single step is invisible.** Even `near3`, the coarsest of the three
-sizes, moves this lens by less than the frame's sensor noise — roughly 0.75 mean
+sizes, moves this lens by less than the frame's sensor noise, roughly 0.75 mean
 absolute difference against a ~2.4 floor. A one-step test reports "nothing happened"
 no matter how carefully it measures, and the lens focuses internally so nothing moves
 visibly either. Both signals say "broken" while the SDK is working correctly.
@@ -87,7 +87,7 @@ The CCAPI sibling project, over 2.4 GHz Wi-Fi, measured:
 One thing worth knowing before you read your own numbers: the baseline's quoted
 "latency" is exactly `1 / fps`. It is the **inter-frame period**, not glass-to-glass
 lag. This script reports the same quantity so the two are directly comparable. True
-end-to-end lag — photon to pixel on your monitor — is a different figure that neither
+end-to-end lag (photon to pixel on your monitor) is a different figure that neither
 project has measured, and measuring it properly needs the camera pointed at a running
 millisecond clock.
 
@@ -95,8 +95,8 @@ millisecond clock.
 **Fail:** anything less. The honest move is then to stop, go back to the CCAPI project
 using its `small` live-view size, and leave this repo as a documented dead end.
 
-Write the numbers down either way. A test report from a different body is genuinely
-useful to the next person.
+Write the numbers down either way. A test report from a different body is useful
+to the next person.
 
 ---
 
@@ -104,7 +104,7 @@ useful to the next person.
 
 1. Opens a session and reads the body name.
 2. Sets `Evf_OutputDevice` to `PC`. This starts live view and routes it to the
-   computer — **your camera's rear screen will go blank** while it runs. That is
+   computer: **your camera's rear screen will go blank** while it runs. That is
    expected, not a fault.
 3. Pulls frames as fast as the link allows, for 20 seconds by default.
 4. Sets `Evf_OutputDevice` back to `TFT`, restoring the screen, and closes the session.
@@ -129,11 +129,11 @@ setting.** The only thing that moves your lens is the optional `--focus-test`.
   a sustained draw, and you will likely run this several times.
 - **Disable auto power-off.** If the body sleeps mid-run the session drops and the
   numbers are garbage. On the R7 this is in the wrench/set-up menu.
-- Set the mode dial to **M**, **Av**, or **P** — a stills mode. Movie mode and some
+- Set the mode dial to **M**, **Av**, or **P**: a stills mode. Movie mode and some
   scene modes change or forbid live view behaviour.
 - **Take the camera off any menu screen.** Live view will not stream while a menu or
   playback view is up; you get zero frames and a confusing timeout.
-- Card in or out does not matter — nothing is written.
+- Card in or out does not matter, because nothing is written.
 
 **The cable**
 
@@ -142,8 +142,8 @@ setting.** The only thing that moves your lens is the optional `--focus-test`.
   If the script reports zero cameras, this is the first thing to suspect.
 - Prefer a port directly on the machine over a hub for the first run.
 
-**The lens** — you mentioned an 85 mm AF macro. That is the good case: focus can be
-driven from the PC, so `--focus-test` is meaningful for you. Make sure the lens's
+**The lens**: an AF macro near 85 mm is the good case. Focus can be driven from the
+PC, so `--focus-test` is meaningful. Make sure the lens's
 **AF/MF switch is set to AF**, or the focus commands will report failure even though
 the lens is capable.
 
@@ -159,7 +159,7 @@ From the repository root, using the project venv:
 
 That is the safe default: 20 seconds, 10 warm-up frames, no focus movement.
 
-**With the focus test** — drives your 85 mm one step near, then one step back, at the
+**With the focus test**: drives your 85 mm one step near, then one step back, at the
 very end, after all measurement is done:
 
 ```powershell
@@ -176,7 +176,7 @@ very end, after all measurement is done:
 | `--dll-dir ...` | `EDSDK_v13.20.21_Windows/EDSDK_64/Dll` | If you move your SDK copy |
 
 Note the default DLL path is **relative to the repository root**, so run the command
-from there. It points at `EDSDK_64`, the 64-bit build — that is deliberate and must
+from there. It points at `EDSDK_64`, the 64-bit build. That is deliberate and must
 match the 64-bit Python in `.venv`. Mixing bitness fails at load with an error that
 never mentions bitness.
 
@@ -189,15 +189,15 @@ the body name, session open, warm-up, then the results block.
 
 The numbers that matter:
 
-- **fps** and **frame period** — these are what the gate is judged on.
-- **inter-frame gap, p95 and max** — a good median with a terrible max means stutter.
+- **fps** and **frame period**: these are what the gate is judged on.
+- **inter-frame gap, p95 and max**: a good median with a terrible max means stutter.
   For focusing, consistency matters as much as the average.
-- **download call** — how long `EdsDownloadEvfImage` itself blocks. If this is most of
+- **download call**: how long `EdsDownloadEvfImage` itself blocks. If this is most of
   the frame period, the link is the limit. If it is small and fps is still low, the
   polling loop is the limit and there is headroom to recover.
-- **frame resolution** — EDSDK picks this; we do not request a size the way CCAPI does.
+- **frame resolution**: EDSDK picks this; we do not request a size the way CCAPI does.
   A big win in fps at a much smaller frame is not the win it appears to be, so check it.
-- **stability per 5 s window** — a rate that only holds for the first second is not a
+- **stability per 5 s window**: a rate that only holds for the first second is not a
   rate worth building on.
 
 The script exits `0` on a pass and `1` on a fail, and prints its own verdict against
@@ -211,12 +211,12 @@ The script translates SDK error codes into causes. The ones you are most likely 
 
 | what you see | what it means |
 |---|---|
-| `cameras detected: 0` | Charge-only cable, camera asleep or off, or a hub problem. Try a different cable first — this is by far the most common cause. |
+| `cameras detected: 0` | Charge-only cable, camera asleep or off, or a hub problem. Try a different cable first, which fixes it in most cases. |
 | `DEVICE_BUSY` / `COMM_PORT_IS_IN_USE` | Another program holds the camera. Quit EOS Utility and retry. |
 | `SESSION_ALREADY_OPEN` | An earlier run crashed without closing. Unplug the USB cable, wait a few seconds, plug back in. |
 | `Live view produced no frames in 15 s` | Camera is on a menu or playback screen, or in a mode that forbids live view. Half-press the shutter to return to shooting, then retry. |
 | `COMM_DISCONNECTED` mid-run | Cable or port dropped, or the camera slept. Check auto power-off is disabled. |
-| `The camera thread hung` | The message pump stopped. This is a bug in the spike, not your setup — worth reporting with the output. |
+| `The camera thread hung` | The message pump stopped. This is a bug in the spike, not your setup, and worth reporting with the output. |
 | `NOT_SUPPORTED` from the focus test | Lens is in MF, or is a manual-focus lens. Check the AF/MF switch. |
 
 If the run dies partway, live view may be left routed to the PC and the camera screen
@@ -226,7 +226,8 @@ left blank. **Power-cycling the camera always restores it.**
 
 ## After you have numbers
 
-Paste the results block back and we will decide the gate together. If it passes, v0.1
+Paste the results block into an issue or discussion; the pass/fail gate above
+decides. If it passes, v0.1
 starts with a proper camera thread built on the same STA-plus-message-pump pattern this
 spike proves. If it fails, that is a real answer too, and the README should say so
 plainly rather than quietly.

@@ -209,7 +209,9 @@ src/cefs/
 ├── paths.py         Where things live, from a checkout and from a bundle
 └── tools/           check_camera, against real hardware
 packaging/           PyInstaller build for the double-clickable app
-tests/               250 tests, none needing a camera or the SDK
+tests/               ≈250 tests, none needing a camera or the SDK
+spike/               CCAPI vs EDSDK live-view measurements behind the switch
+TESTING.md           Hardware test plan for shooting against a real rig
 ```
 
 ## Contributing
