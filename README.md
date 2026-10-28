@@ -134,7 +134,7 @@ Live view is polled, so a working preview is not proof the threading is right. T
 
 ## Layout
 
-`src/cefs/` holds the contract (`backend.py`), config, naming, the `edsdk/` bindings and SDK thread, pure `processing/`, the local `app/` UI, a `mock/` backend, and `tools/`. Alongside it: `packaging/` (PyInstaller), `tests/` (~250, no camera or SDK needed), `spike/` (the CCAPI vs EDSDK measurements), and `TESTING.md` (hardware test plan).
+`src/cefs/` holds the contract (`backend.py`), config, naming, the `edsdk/` bindings and SDK thread, pure `processing/`, the local `app/` UI, a `mock/` backend, and `tools/`. Alongside it: `packaging/` (PyInstaller), `tests/` (252, no camera or SDK needed), `spike/` (the CCAPI vs EDSDK measurements), and `TESTING.md` (hardware test plan).
 
 ## Contributing
 
