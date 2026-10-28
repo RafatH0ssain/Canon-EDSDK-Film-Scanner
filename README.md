@@ -132,12 +132,6 @@ One thread owns the SDK; everything else queues and waits. Windows accepts any s
 
 Live view is polled, so a working preview is not proof the threading is right. The first thing to break is a capture that never completes.
 
-## Limitations
-
-- Corner-by-corner alignment isn't built; the per-region sharpness it needs is.
-- No batch re-develop of a roll already scanned.
-- Linux is refused outright rather than half-working.
-
 ## Layout
 
 `src/cefs/` holds the contract (`backend.py`), config, naming, the `edsdk/` bindings and SDK thread, pure `processing/`, the local `app/` UI, a `mock/` backend, and `tools/`. Alongside it: `packaging/` (PyInstaller), `tests/` (~250, no camera or SDK needed), `spike/` (the CCAPI vs EDSDK measurements), and `TESTING.md` (hardware test plan).
