@@ -258,6 +258,24 @@ def analyse(linear: np.ndarray, params: FilmParams) -> dict:
 # --- lookup tables -----------------------------------------------------------
 
 
+#: Where the highlight shoulder starts, on the 0-1 scale before contrast.
+_KNEE = 0.75
+
+
+def _shoulder(x: np.ndarray) -> np.ndarray:
+    """Identity below the knee, then an exponential roll-off that approaches 1.
+
+    Auto exposure puts the median at mid-grey, which on a contrasty frame
+    pushes everything above it past white. A hard clip turned a quarter of
+    Roll001 frame 50 into flat 65535; this keeps tones up to ~3.5x over white
+    distinguishable instead. Slope is 1 at the knee, so nothing below it moves.
+    """
+    k = _KNEE
+    # Capped: exp(-50) is already 1 in 16 bits, and larger underflows.
+    over = np.minimum(np.maximum(x - k, 0.0) / (1.0 - k), 50.0)
+    return np.where(x <= k, x, k + (1.0 - k) * (1.0 - np.exp(-over)))
+
+
 def build_luts(
     measured: dict,
     params: FilmParams,
@@ -299,7 +317,7 @@ def build_luts(
             x = np.power(x, measured["gammas"][c])
         x = x * float(params.channel_gain[c]) * float(params.exposure)
         x = x * float(measured.get("auto_exposure", (1.0, 1.0, 1.0))[c])
-        x = np.clip((x - black) / (white - black), 0.0, 1.0)
+        x = _shoulder(np.maximum((x - black) / (white - black), 0.0))
         if params.contrast != 1.0:
             # x ** contrast, NOT x ** (1 / contrast). base/pixel recovers
             # E ** gamma, so getting back to E raises to 1 / gamma -- which is

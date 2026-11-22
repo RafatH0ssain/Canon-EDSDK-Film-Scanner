@@ -316,3 +316,23 @@ def test_custom_input_transfer_must_match_the_depth():
     measured = {"base": (0.9, 0.5, 0.3), "scales": (2.0, 2.0, 2.0), "gammas": (1.0, 1.0, 1.0)}
     with pytest.raises(ValueError):
         build_luts(measured, FilmParams(), 16, 16, input_linear=np.linspace(0, 1, 256))
+
+
+def test_highlights_roll_off_instead_of_clipping():
+    # Auto exposure lifts midtones; tones up to 3x past white must stay
+    # distinct rather than pile up at the top code (a quarter of a real
+    # frame went flat white with the hard clip).
+    measured = {
+        "base": (1.0, 1.0, 1.0),
+        "scales": (1.0, 1.0, 1.0),
+        "gammas": (1.0, 1.0, 1.0),
+        "auto_exposure": (1.0, 1.0, 1.0),
+    }
+    params = FilmParams(mode="bw", contrast=1.0)
+    lut = build_luts(measured, params, 16, 16)[1].astype(np.int64)
+    inputs = np.arange(1, 65536) / 65535.0
+    over = 1.0 / inputs - 1.0  # what each input code becomes before the curve
+    zone = (over > 1.0) & (over < 3.0)
+    assert np.all(np.diff(lut) <= 0)  # brighter negative -> darker positive
+    assert (lut[1:][zone] == 65535).mean() == 0
+
