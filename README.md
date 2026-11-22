@@ -4,10 +4,13 @@
 
 Scan film negatives with a Canon camera on a copy stand: live positive preview, remote focus and shutter, over USB. Colour and B&W, verified on an EOS R7 from Windows and macOS.
 
-## Preview
+It has a wireless sibling, [Canon Smart Film Scanner](https://github.com/RafatH0ssain/Canon-Smart-Film-Scanner),
+which needs no SDK. Over the R7's Wi-Fi it only managed about 4 fps though, against about 60 fps
+over USB here, which is why this one exists. Once a roll is scanned,
+[Film Scan Darkroom](https://github.com/RafatH0ssain/Film-Scan-Darkroom) crops, inverts and
+exports it.
 
-**Live Inversion & Focus Peaking**  
-![Inverted B&W film with focus peaking and right nav open](LiveInversionFocusPeaking.png)
+## Running it
 
 **Raw Negative View**  
 ![Raw negative view without processing](RawNegativeView.png)
@@ -60,8 +63,8 @@ macOS builds are unsigned, so Gatekeeper blocks them elsewhere. Locally, right-c
 No SDK, no camera:
 
 ```bash
-python -m venv .venv                              # 3.10-3.13, 64-bit
-.venv/bin/pip install -r requirements.txt -e .    # Windows: .venv\Scripts\
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt -e .
 .venv/bin/python -m cefs.app.server
 ```
 
@@ -78,8 +81,6 @@ Copy `config.example.yaml` to `config.yaml`, set `camera.use_mock: false`, and p
 macOS needs the framework re-signed first (Canon ships it with the seal broken):
 
 ```bash
-ditto "/Volumes/Macintosh 1/EDSDK/Framework/EDSDK.framework" edsdk_sdk/Framework/EDSDK.framework
-find edsdk_sdk/Framework/EDSDK.framework -name .DS_Store -delete
 xattr -cr edsdk_sdk/Framework/EDSDK.framework
 codesign --force --deep --sign - edsdk_sdk/Framework/EDSDK.framework
 ```
@@ -132,7 +133,12 @@ One thread owns the SDK; everything else queues and waits. Windows accepts any s
 
 Live view is polled, so a working preview is not proof the threading is right. The first thing to break is a capture that never completes.
 
-## Layout
+| Folder | What's in it |
+|---|---|
+| `src/cefs/edsdk/` | ctypes bindings and the one thread that owns the SDK |
+| `src/cefs/processing/` | inversion, peaking, sharpness, RAW and HEIF decoding |
+| `src/cefs/app/` | the local web server and browser UI |
+| `src/cefs/mock/` | a fake camera so none of this needs hardware |
 
 `src/cefs/` holds the contract (`backend.py`), config, naming, the `edsdk/` bindings and SDK thread, pure `processing/`, the local `app/` UI, a `mock/` backend, and `tools/`. Alongside it: `packaging/` (PyInstaller), `tests/` (252, no camera or SDK needed), `spike/` (the CCAPI vs EDSDK measurements), and `TESTING.md` (hardware test plan).
 
