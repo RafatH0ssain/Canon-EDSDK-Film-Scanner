@@ -90,3 +90,12 @@ Scharr gradient. Replacing it with Pillow, tifffile and numpy took the app from
 **Canon's EDSDK.** Licensed per developer and not redistributable. The app ships
 without it; you supply your own copy. The build fails if any of it is found in
 the output.
+
+## Scope
+
+This licence covers this project's own source code only.
+
+Canon's EOS Digital SDK (EDSDK), its headers, its binaries, its sample code and
+its reference documentation are Canon's property and carry their own separate
+terms. Nothing here grants any rights to them. Each user obtains their own copy
+directly from Canon's Developer Community.

@@ -19,7 +19,7 @@ alone, JPEG alone, and HEIF, including the `.HIF` files already sitting in
 compression mode inside the `.CR3`, so it goes down the same RAW path.
 
 Untested on hardware: HEIF has only been developed from files on disk, never
-straight off a shutter release. If you shoot one, say whether it arrives.
+straight off a shutter release. A shot taken this way is worth reporting.
 
 **2. Restart the server and hard-refresh the browser.**
 

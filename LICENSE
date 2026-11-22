@@ -19,12 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-This licence covers this project's own source code only.
-
-Canon's EOS Digital SDK (EDSDK), its headers, its binaries, its sample code and
-its reference documentation are Canon's property and carry their own separate
-terms. Nothing here grants any rights to them. Each user obtains their own copy
-directly from Canon's Developer Community.
